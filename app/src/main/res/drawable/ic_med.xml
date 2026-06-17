@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    通知小图标
+    注意：通知栏小图标必须是白色透明 PNG 或矢量图，
+    系统会根据通知样式自动着色。彩色图标在状态栏会显示成一块白块。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+
+    <!-- 药丸外形（胶囊） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4.22,11.29 L11.29,4.22 C12.92,2.59 15.58,2.59 17.21,4.22 L19.78,6.79 C21.41,8.42 21.41,11.08 19.78,12.71 L12.71,19.78 C11.08,21.41 8.42,21.41 6.79,19.78 L4.22,17.21 C2.59,15.58 2.59,12.92 4.22,11.29 Z M6.79,13.87 L10.13,17.21 L17.21,10.13 L13.87,6.79 L6.79,13.87 Z" />
+
+</vector>

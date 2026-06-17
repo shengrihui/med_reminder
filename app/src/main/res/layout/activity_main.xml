@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/main"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="20dp">
+
+        <!-- 标题 -->
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="吃药提醒"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 药品名称 -->
+        <TextView
+            android:id="@+id/tvMedNameLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="药品名称："
+            android:textSize="16sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvTitle" />
+
+        <EditText
+            android:id="@+id/etMedName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:hint="例如：阿司匹林"
+            android:inputType="text"
+            android:maxLength="20"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvMedNameLabel" />
+
+        <!-- 检查时间 -->
+        <TextView
+            android:id="@+id/tvTimeLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="检查时间："
+            android:textSize="16sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/etMedName" />
+
+        <Button
+            android:id="@+id/btnPickTime"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="21:00"
+            android:textSize="18sp"
+            app:layout_constraintBottom_toBottomOf="@id/tvTimeLabel"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/tvTimeLabel" />
+
+        <!-- 服用频率 -->
+        <TextView
+            android:id="@+id/tvIntervalLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="服用频率："
+            android:textSize="16sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvTimeLabel" />
+
+        <RadioGroup
+            android:id="@+id/rgInterval"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvIntervalLabel">
+
+            <RadioButton
+                android:id="@+id/rbEveryDay"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:text="每天" />
+
+            <RadioButton
+                android:id="@+id/rbEvery2Day"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="隔天" />
+
+            <RadioButton
+                android:id="@+id/rbEvery3Day"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="每3天" />
+        </RadioGroup>
+
+        <!-- 重复提醒间隔 -->
+        <TextView
+            android:id="@+id/tvRepeatLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="未确认时重复提醒间隔："
+            android:textSize="16sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/rgInterval" />
+
+        <RadioGroup
+            android:id="@+id/rgRepeat"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvRepeatLabel">
+
+            <RadioButton
+                android:id="@+id/rbRepeat10"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:text="10分钟" />
+
+            <RadioButton
+                android:id="@+id/rbRepeat30"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="30分钟" />
+
+            <RadioButton
+                android:id="@+id/rbRepeat60"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="1小时" />
+        </RadioGroup>
+
+        <!-- 今日状态 -->
+        <TextView
+            android:id="@+id/tvStatusLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="今日状态："
+            android:textSize="16sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/rgRepeat" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="未吃"
+            android:textColor="#F44336"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="@id/tvStatusLabel"
+            app:layout_constraintStart_toEndOf="@id/tvStatusLabel"
+            app:layout_constraintTop_toTopOf="@id/tvStatusLabel" />
+
+        <!-- 提醒开关 -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/swEnabled"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="开启提醒"
+            android:textSize="16sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvStatusLabel" />
+
+        <!-- 按钮区 -->
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="8dp"
+            android:text="保存设置"
+            app:layout_constraintEnd_toStartOf="@id/btnTest"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/swEnabled" />
+
+        <Button
+            android:id="@+id/btnTest"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="立即测试"
+            app:layout_constraintBottom_toBottomOf="@id/btnSave"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/btnSave"
+            app:layout_constraintTop_toTopOf="@id/btnSave" />
+
+        <!-- 手动标记已吃药 -->
+        <Button
+            android:id="@+id/btnMarkTaken"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="手动标记今天已吃药"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/btnSave" />
+
+        <!-- 提示信息 -->
+        <TextView
+            android:id="@+id/tvTip"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="提示：保存后会按设定时间检查；到点未吃药会发通知，点通知上的【已吃药】即可停止今日提醒。"
+            android:textColor="#888888"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/btnMarkTaken" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</ScrollView>

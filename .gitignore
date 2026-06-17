@@ -1,0 +1,22 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Trae IDE 配置（非 Android 项目文件）
+package.json
+package-lock.json
+tsconfig.json
+project.config.json
+project.private.config.json
