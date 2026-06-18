@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.medreminder"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "v0.5"
+        versionCode = 4
+        versionName = "v0.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
