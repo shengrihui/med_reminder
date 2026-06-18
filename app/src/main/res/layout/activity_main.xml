@@ -73,51 +73,12 @@
         app:layout_constraintTop_toBottomOf="@id/tvTitle">
 
         <LinearLayout
+            android:id="@+id/llDrugList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
-            android:paddingBottom="20dp">
-
-            <!-- 待吃药列表 -->
-            <LinearLayout
-                android:id="@+id/llDrugList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
-
-            <!-- 今日已完成区域 -->
-            <LinearLayout
-                android:id="@+id/llCompletedSection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="@color/divider" />
-
-                <TextView
-                    android:id="@+id/tvCompletedTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="今日已完成"
-                    android:textColor="@color/text_hint"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <LinearLayout
-                    android:id="@+id/llCompletedList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="vertical" />
-            </LinearLayout>
-        </LinearLayout>
+            android:paddingBottom="20dp" />
     </ScrollView>
 
     <!-- 底部添加药品按钮 -->

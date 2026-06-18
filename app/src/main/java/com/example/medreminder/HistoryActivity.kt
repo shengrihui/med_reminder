@@ -1,32 +1,28 @@
 package com.example.medreminder
 
-import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
-import android.view.ViewGroup
+import android.view.View
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.gridlayout.widget.GridLayout
 import com.example.medreminder.databinding.ActivityHistoryBinding
+import com.example.medreminder.databinding.ItemHistoryDayBinding
 import com.example.medreminder.databinding.ItemHistoryDrugBinding
-import com.example.medreminder.databinding.ItemHistoryTimeBinding
 import java.util.Calendar
 
 /**
  * 历史记录页
  *
- * 按药品分组，每个药品下按时间点显示最近 14 天的记录。
- * 每天一个小方格：
- * - 绿色 = 已吃
- * - 橙色 = 已忽略
- * - 灰色 = 未吃/未记录
+ * 按药品分组，每个药品一个卡片，里面是最近 14 天的列表。
+ * 每行一天：日期 + 各时间点状态圆点 + 汇总。
  *
- * 统计只计算"已吃"次数，已忽略不算入已吃。
+ * 圆点颜色：绿=已吃  橙=已忽略  灰=未记录
  */
 class HistoryActivity : AppCompatActivity() {
 
@@ -74,10 +70,10 @@ class HistoryActivity : AppCompatActivity() {
 
         // 图例
         val legend = TextView(this).apply {
-            text = "图例：绿=已吃  橙=已忽略  灰=未记录"
+            text = "图例：●绿=已吃  ●橙=已忽略  ●灰=未记录"
             setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.text_hint))
             textSize = 12f
-            setPadding(0, 0, 0, 24)
+            setPadding(0, 0, 0, 16)
         }
         container.addView(legend)
 
@@ -85,7 +81,7 @@ class HistoryActivity : AppCompatActivity() {
             val card = ItemHistoryDrugBinding.inflate(LayoutInflater.from(this), container, false)
             card.tvDrugName.text = drug.name
 
-            // 统计最近 14 天已吃次数（忽略不算已吃）
+            // 统计最近 14 天已吃次数
             val cal = Calendar.getInstance()
             var takenCount = 0
             var totalSlots = 0
@@ -100,86 +96,80 @@ class HistoryActivity : AppCompatActivity() {
             }
             card.tvSummary.text = "最近14天已吃 $takenCount/$totalSlots 次"
 
-            // 每个时间点的历史网格
-            for (timeIndex in drug.times.indices) {
-                val timeView = ItemHistoryTimeBinding.inflate(LayoutInflater.from(this), card.llTimes, false)
-                timeView.tvTime.text = drug.times[timeIndex].format()
-                renderTimeGrid(timeView.gridHistory, drug.id, timeIndex)
-                card.llTimes.addView(timeView.root)
+            // 14 天列表（从今天往前）
+            val today = Calendar.getInstance()
+            for (i in 0 until 14) {
+                val dayCal = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_MONTH, -i)
+                }
+                val row = ItemHistoryDayBinding.inflate(LayoutInflater.from(this), card.llTimes, false)
+                bindDayRow(row, drug, dayCal, i == 0)
+                card.llTimes.addView(row.root)
             }
 
             container.addView(card.root)
         }
     }
 
-    private fun renderTimeGrid(grid: GridLayout, drugId: Int, timeIndex: Int) {
-        grid.removeAllViews()
+    private fun bindDayRow(row: ItemHistoryDayBinding, drug: Drug, cal: Calendar, isToday: Boolean) {
+        val dateStr = DrugStore.dateString(cal)
+        val monthDay = "${cal.get(Calendar.MONTH) + 1}/${cal.get(Calendar.DAY_OF_MONTH)}"
+        val dayLabel = if (isToday) "$monthDay 今天" else monthDay
+        row.tvDate.text = dayLabel
 
-        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -13) }
-        val weekNames = arrayOf("日", "一", "二", "三", "四", "五", "六")
+        // 各时间点圆点
+        row.llDots.removeAllViews()
+        var taken = 0
+        var ignored = 0
+        val totalTimes = drug.times.size
 
-        // 第一行：星期标题
-        for (w in weekNames) {
-            val tv = TextView(this).apply {
-                text = w
-                gravity = Gravity.CENTER
-                setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.text_hint))
-                textSize = 11f
+        for (timeIndex in drug.times.indices) {
+            val isTaken = DrugStore.isTakenOn(this, drug.id, timeIndex, dateStr)
+            val isIgnored = DrugStore.isIgnoredOn(this, drug.id, timeIndex, dateStr)
+            if (isTaken) taken++
+            if (isIgnored) ignored++
+
+            val dot = View(this).apply {
+                val drawableRes = when {
+                    isTaken -> R.drawable.dot_taken
+                    isIgnored -> R.drawable.dot_ignored
+                    else -> R.drawable.dot_missed
+                }
+                setBackgroundResource(drawableRes)
+                val size = (12 * resources.displayMetrics.density).toInt()
+                layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                    marginEnd = (6 * resources.displayMetrics.density).toInt()
+                }
             }
-            val params = GridLayout.LayoutParams().apply {
-                width = 0
-                height = ViewGroup.LayoutParams.WRAP_CONTENT
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f)
-            }
-            grid.addView(tv, params)
+            row.llDots.addView(dot)
         }
 
-        // 14 天
-        for (i in 0 until 14) {
-            val dateStr = DrugStore.dateString(cal)
-            val isTaken = DrugStore.isTakenOn(this, drugId, timeIndex, dateStr)
-            val isIgnored = DrugStore.isIgnoredOn(this, drugId, timeIndex, dateStr)
-            val isToday = dateStr == DrugStore.dateString(Calendar.getInstance())
-            val monthDay = "${cal.get(Calendar.MONTH) + 1}/${cal.get(Calendar.DAY_OF_MONTH)}"
+        // 汇总文字
+        val completed = taken + ignored
+        row.tvSummary.text = when {
+            totalTimes == 0 -> "无时间点"
+            completed == totalTimes && taken == totalTimes -> "全部已吃"
+            completed == totalTimes && taken < totalTimes -> "已吃$taken 忽略${ignored}"
+            completed == 0 -> "未记录"
+            else -> "已吃$taken/$totalTimes"
+        }
 
-            val tv = TextView(this).apply {
-                text = monthDay
-                gravity = Gravity.CENTER
-                textSize = 10f
-                setPadding(4, 8, 4, 8)
-                when {
-                    isTaken -> {
-                        setBackgroundResource(R.drawable.bg_history_taken)
-                        setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.bg_card))
-                    }
-                    isIgnored -> {
-                        setBackgroundResource(R.drawable.bg_history_ignored)
-                        setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.bg_card))
-                    }
-                    else -> {
-                        setBackgroundResource(R.drawable.bg_history_missed)
-                        setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.text_hint))
-                    }
-                }
-                if (isToday) {
-                    setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                }
-                val statusText = when {
-                    isTaken -> "已吃"
-                    isIgnored -> "已忽略"
+        // 无障碍
+        val statusDesc = buildString {
+            append(monthDay)
+            if (isToday) append(" 今天")
+            append("，")
+            for (timeIndex in drug.times.indices) {
+                append(drug.times[timeIndex].format())
+                append(" ")
+                append(when {
+                    DrugStore.isTakenOn(this@HistoryActivity, drug.id, timeIndex, dateStr) -> "已吃"
+                    DrugStore.isIgnoredOn(this@HistoryActivity, drug.id, timeIndex, dateStr) -> "已忽略"
                     else -> "未记录"
-                }
-                contentDescription = "$monthDay $statusText${if (isToday) " 今天" else ""}"
+                })
+                if (timeIndex < drug.times.size - 1) append("，")
             }
-
-            val params = GridLayout.LayoutParams().apply {
-                width = 0
-                height = ViewGroup.LayoutParams.WRAP_CONTENT
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f)
-                if (i % 7 == 0) topMargin = 4
-            }
-            grid.addView(tv, params)
-            cal.add(Calendar.DAY_OF_MONTH, 1)
         }
+        row.root.contentDescription = statusDesc
     }
 }

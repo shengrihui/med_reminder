@@ -44,14 +44,9 @@ class ManageActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         binding.btnAddNew.setOnClickListener {
-            // 直接创建药品并进入编辑页，不先问名字
-            val drug = DrugStore.addDrug(this, "新药品")
-            if (drug == null) {
-                Toast.makeText(this, "已存在同名药品，请先改名", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+            // 进入新建模式，保存时才真正创建药品
             startActivity(Intent(this, SettingsActivity::class.java).apply {
-                putExtra(ReminderManager.EXTRA_DRUG_ID, drug.id)
+                putExtra(SettingsActivity.EXTRA_IS_NEW, true)
             })
         }
     }

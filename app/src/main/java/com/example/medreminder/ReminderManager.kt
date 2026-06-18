@@ -40,16 +40,17 @@ object ReminderManager {
     /** 注册某药品某时间点的每日闹钟 */
     fun scheduleDailyAlarm(context: Context, drug: Drug, timeIndex: Int) {
         if (!drug.enabled) return
-        if (timeIndex >= drug.times.size) return
+        if (timeIndex < 0 || timeIndex >= drug.times.size) return
 
         val time = drug.times[timeIndex]
+        val interval = if (drug.intervalDays < 1) 1 else drug.intervalDays
         val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, time.hour)
             set(Calendar.MINUTE, time.minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) {
-                add(Calendar.DAY_OF_MONTH, drug.intervalDays)
+                add(Calendar.DAY_OF_MONTH, interval)
             }
         }
 

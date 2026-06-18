@@ -83,6 +83,40 @@ object DrugStore {
         return drug
     }
 
+    /**
+     * 创建药品（完整配置一次性写入）。用于"新建药品"流程：编辑页保存时才创建。
+     * 如果同名药品已存在，返回 null。
+     */
+    fun createDrug(
+        context: Context,
+        name: String,
+        times: List<ReminderTime>,
+        intervalDays: Int,
+        repeatMinutes: Int
+    ): Drug? {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return null
+        if (times.isEmpty()) return null
+        if (isDrugNameDuplicate(context, trimmedName, excludeId = -1)) return null
+
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val newId = sp.getInt(KEY_NEXT_ID, 1)
+        sp.edit().putInt(KEY_NEXT_ID, newId + 1).apply()
+
+        val drug = Drug(
+            id = newId,
+            name = trimmedName,
+            times = times,
+            intervalDays = intervalDays,
+            repeatMinutes = repeatMinutes,
+            enabled = true
+        )
+        val list = getAllDrugs(context).toMutableList()
+        list.add(drug)
+        persist(context, list)
+        return drug
+    }
+
     /** 检查药品名称是否重复（忽略首尾空格、大小写）。excludeId 用于编辑时排除自己。 */
     fun isDrugNameDuplicate(context: Context, name: String, excludeId: Int): Boolean {
         val trimmed = name.trim()

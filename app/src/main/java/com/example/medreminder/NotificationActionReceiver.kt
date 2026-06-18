@@ -32,21 +32,29 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
     private fun handleTaken(context: Context, drugId: Int, timeIndex: Int) {
         Log.d(TAG, "已吃药, drugId=$drugId, timeIndex=$timeIndex")
+        val drug = DrugStore.getDrug(context, drugId) ?: return
+        if (timeIndex >= drug.times.size) return
+
         DrugStore.markTaken(context, drugId, timeIndex)
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(ReminderManager.notificationId(drugId, timeIndex))
 
         ReminderManager.cancelRepeatAlarm(context, drugId, timeIndex)
-
-        DrugStore.getDrug(context, drugId)?.let { drug ->
-            ReminderManager.scheduleDailyAlarm(context, drug, timeIndex)
-        }
+        ReminderManager.scheduleDailyAlarm(context, drug, timeIndex)
     }
 
     private fun handleLater(context: Context, drugId: Int, timeIndex: Int) {
         Log.d(TAG, "稍后提醒, drugId=$drugId, timeIndex=$timeIndex")
+        val drug = DrugStore.getDrug(context, drugId) ?: return
+        if (timeIndex >= drug.times.size) return
+
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(ReminderManager.notificationId(drugId, timeIndex))
+
+        // 稍后提醒：重新注册一次重复闹钟
+        if (drug.repeatMinutes > 0) {
+            ReminderManager.scheduleRepeatAlarm(context, drug, timeIndex)
+        }
     }
 }
