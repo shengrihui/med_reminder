@@ -2,14 +2,18 @@ package com.example.medreminder
 
 import android.Manifest
 import android.app.AlarmManager
-import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,27 +21,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.example.medreminder.databinding.MainActivityBinding
+import androidx.gridlayout.widget.GridLayout
+import com.example.medreminder.databinding.ActivityMainBinding
+import java.util.Calendar
 
-/**
- * 主界面
- *
- * 功能：
- * - 设置药品名、检查时间、频率、重复间隔
- * - 保存配置并注册闹钟
- * - 立即测试通知
- * - 手动标记今天已吃药
- * - 申请通知权限、精确闹钟权限
- */
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var binding: MainActivityBinding
+    private lateinit var binding: ActivityMainBinding
 
-    /** 当前选中的时间 */
-    private var selectedHour = ReminderManager.DEFAULT_HOUR
-    private var selectedMinute = ReminderManager.DEFAULT_MINUTE
-
-    /** 通知权限申请回调 */
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -50,7 +41,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        binding = MainActivityBinding.inflate(layoutInflater)
+        binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
@@ -59,216 +50,189 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        // 初始化界面
-        loadConfigToUI()
         setupListeners()
-
-        // 首次启动申请通知权限
         checkNotificationPermission()
     }
 
     override fun onResume() {
         super.onResume()
-        // 每次回到界面刷新今日状态
-        updateTodayStatus()
+        updateUI()
     }
 
-    /** 把保存的配置加载到界面 */
-    private fun loadConfigToUI() {
-        selectedHour = ReminderManager.getHour(this)
-        selectedMinute = ReminderManager.getMinute(this)
-        binding.etMedName.setText(ReminderManager.getMedName(this))
-        binding.btnPickTime.text = String.format("%02d:%02d", selectedHour, selectedMinute)
+    /* ===================== 监听器 ===================== */
 
-        // 频率
-        when (ReminderManager.getIntervalDays(this)) {
-            1 -> binding.rbEveryDay.isChecked = true
-            2 -> binding.rbEvery2Day.isChecked = true
-            3 -> binding.rbEvery3Day.isChecked = true
-            else -> binding.rbEveryDay.isChecked = true
-        }
-
-        // 重复间隔
-        when (ReminderManager.getRepeatMinutes(this)) {
-            10 -> binding.rbRepeat10.isChecked = true
-            30 -> binding.rbRepeat30.isChecked = true
-            60 -> binding.rbRepeat60.isChecked = true
-            else -> binding.rbRepeat10.isChecked = true
-        }
-
-        // 开关
-        binding.swEnabled.isChecked = ReminderManager.isEnabled(this)
-
-        updateTodayStatus()
-    }
-
-    /** 设置所有控件的点击监听 */
     private fun setupListeners() {
-        // 时间选择
-        binding.btnPickTime.setOnClickListener {
-            TimePickerDialog(
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        binding.swEnabled.setOnCheckedChangeListener { _, isChecked ->
+            ReminderManager.saveConfig(
                 this,
-                { _, hourOfDay, minute ->
-                    selectedHour = hourOfDay
-                    selectedMinute = minute
-                    binding.btnPickTime.text = String.format("%02d:%02d", hourOfDay, minute)
-                },
-                selectedHour,
-                selectedMinute,
-                true // 24小时制
-            ).show()
+                ReminderManager.getHour(this),
+                ReminderManager.getMinute(this),
+                ReminderManager.getIntervalDays(this),
+                ReminderManager.getRepeatMinutes(this),
+                ReminderManager.getMedName(this),
+                isChecked
+            )
+            if (isChecked) {
+                if (!checkExactAlarmPermission()) {
+                    Toast.makeText(this, "请允许精确闹钟权限，否则提醒可能不准时", Toast.LENGTH_LONG).show()
+                }
+                ReminderManager.scheduleDailyAlarm(this)
+                Toast.makeText(this, "提醒已开启", Toast.LENGTH_SHORT).show()
+            } else {
+                ReminderManager.cancelAllAlarms(this)
+                Toast.makeText(this, "提醒已关闭", Toast.LENGTH_SHORT).show()
+            }
+            updateStatusCard()
         }
 
-        // 保存设置
-        binding.btnSave.setOnClickListener {
-            saveConfig()
-        }
-
-        // 立即测试（5秒后发通知）
-        binding.btnTest.setOnClickListener {
-            testNotification()
-        }
-
-        // 手动标记今天已吃药
         binding.btnMarkTaken.setOnClickListener {
             ReminderManager.markTakenToday(this)
-            // 取消重复提醒
             ReminderManager.cancelRepeatAlarm(this)
-            // 取消通知（如果有）
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(ReminderManager.NOTIFICATION_ID)
-            updateTodayStatus()
+            updateUI()
             Toast.makeText(this, "已标记今天吃药完成", Toast.LENGTH_SHORT).show()
         }
+
+        binding.btnTest.setOnClickListener {
+            if (!checkNotificationPermission()) return@setOnClickListener
+            val intent = Intent(this, AlarmReceiver::class.java)
+            sendBroadcast(intent)
+            Toast.makeText(this, "已触发测试通知", Toast.LENGTH_SHORT).show()
+        }
     }
 
-    /** 保存配置并注册闹钟 */
-    private fun saveConfig() {
-        val medName = binding.etMedName.text.toString().trim()
-        if (medName.isEmpty()) {
-            Toast.makeText(this, "请输入药品名称", Toast.LENGTH_SHORT).show()
-            return
-        }
+    /* ===================== UI 更新 ===================== */
 
-        val intervalDays = when (binding.rgInterval.checkedRadioButtonId) {
-            R.id.rbEveryDay -> 1
-            R.id.rbEvery2Day -> 2
-            R.id.rbEvery3Day -> 3
-            else -> 1
-        }
-
-        val repeatMinutes = when (binding.rgRepeat.checkedRadioButtonId) {
-            R.id.rbRepeat10 -> 10
-            R.id.rbRepeat30 -> 30
-            R.id.rbRepeat60 -> 60
-            else -> 10
-        }
-
-        val enabled = binding.swEnabled.isChecked
-
-        // 保存配置
-        ReminderManager.saveConfig(
-            this,
-            selectedHour,
-            selectedMinute,
-            intervalDays,
-            repeatMinutes,
-            medName,
-            enabled
-        )
-
-        // 重新注册闹钟
-        ReminderManager.cancelAllAlarms(this)
-        if (enabled) {
-            // 检查精确闹钟权限
-            if (!checkExactAlarmPermission()) {
-                // 没权限也会注册（内部会降级），但提示一下
-                Toast.makeText(this, "已保存，但精确闹钟权限未授予，提醒可能不准时", Toast.LENGTH_LONG).show()
-            }
-            ReminderManager.scheduleDailyAlarm(this)
-            Toast.makeText(this, "已保存并开启提醒", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "已保存（提醒未开启）", Toast.LENGTH_SHORT).show()
-        }
-
-        updateTodayStatus()
+    private fun updateUI() {
+        binding.swEnabled.isChecked = ReminderManager.isEnabled(this)
+        updateStatusCard()
+        updateCalendar()
     }
 
-    /** 立即测试通知（直接触发一次闹钟广播） */
-    private fun testNotification() {
-        // 先确保通知权限
-        if (!checkNotificationPermission()) {
-            return
-        }
-
-        // 直接发送广播触发 AlarmReceiver（会走完整的"检查+发通知"流程）
-        val intent = Intent(this, AlarmReceiver::class.java)
-        sendBroadcast(intent)
-        Toast.makeText(this, "已触发测试通知", Toast.LENGTH_SHORT).show()
-    }
-
-    /** 更新今日状态显示 */
-    private fun updateTodayStatus() {
+    private fun updateStatusCard() {
         if (ReminderManager.isTakenToday(this)) {
-            binding.tvStatus.text = "已吃 ✅"
-            binding.tvStatus.setTextColor(0xFF4CAF50.toInt()) // 绿色
+            binding.tvStatusEmoji.text = "✅"
+            binding.tvStatusText.text = "今天已吃药"
+            binding.tvStatusHint.text = "太棒了，继续保持！"
+            binding.tvStatusText.setTextColor(0xFF4CAF50.toInt())
         } else {
-            binding.tvStatus.text = "未吃 ⭕"
-            binding.tvStatus.setTextColor(0xFFF44336.toInt()) // 红色
+            binding.tvStatusEmoji.text = "⭕"
+            binding.tvStatusText.text = "今天还没吃药"
+            binding.tvStatusHint.text = "收到通知后记得点「已吃药」哦"
+            binding.tvStatusText.setTextColor(0xFF333333.toInt())
         }
     }
 
-    /** 检查通知权限，没有就申请 */
+    /* ===================== 日历生成 ===================== */
+
+    private fun updateCalendar() {
+        val takenDates = ReminderManager.getAllTakenDates(this)
+        val today = Calendar.getInstance()
+
+        // 生成星期表头
+        val weekHeader = binding.llWeekHeader
+        weekHeader.removeAllViews()
+        val weekDays = arrayOf("日", "一", "二", "三", "四", "五", "六")
+        for (day in weekDays) {
+            val tv = TextView(this).apply {
+                text = day
+                textSize = 12f
+                setTextColor(Color.parseColor("#999999"))
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            weekHeader.addView(tv)
+        }
+
+        // 生成 14 天日期网格
+        val grid = binding.gridCalendar
+        grid.removeAllViews()
+
+        val startCal = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_MONTH, -13) // 从 13 天前开始
+        }
+
+        val todayStr = ReminderManager.dateString(today)
+
+        for (i in 0 until 14) {
+            val dateStr = ReminderManager.dateString(startCal)
+            val dayOfMonth = startCal.get(Calendar.DAY_OF_MONTH)
+            val isToday = dateStr == todayStr
+            val isTaken = takenDates.contains(dateStr)
+
+            val tv = TextView(this).apply {
+                text = dayOfMonth.toString()
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setPadding(0, 10, 0, 10)
+
+                // 用 GridLayout.LayoutParams
+                val params = GridLayout.LayoutParams(
+                    GridLayout.spec(GridLayout.UNDEFINED, 1f),
+                    GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                ).apply {
+                    width = 0
+                    height = LinearLayout.LayoutParams.WRAP_CONTENT
+                }
+                layoutParams = params
+
+                when {
+                    isTaken -> {
+                        setBackgroundResource(R.drawable.bg_calendar_taken)
+                        setTextColor(Color.WHITE)
+                        setTypeface(null, Typeface.BOLD)
+                        // 无障碍：已吃
+                        contentDescription = "${startCal.get(Calendar.MONTH) + 1}月${dayOfMonth}日，已吃药"
+                    }
+                    isToday -> {
+                        setBackgroundResource(R.drawable.bg_calendar_today)
+                        setTextColor(Color.parseColor("#333333"))
+                        setTypeface(null, Typeface.BOLD)
+                        contentDescription = "今天，${startCal.get(Calendar.MONTH) + 1}月${dayOfMonth}日，${if (isTaken) "已吃" else "未吃"}"
+                    }
+                    else -> {
+                        setBackgroundResource(R.drawable.bg_calendar_normal)
+                        setTextColor(Color.parseColor("#999999"))
+                        contentDescription = "${startCal.get(Calendar.MONTH) + 1}月${dayOfMonth}日，未吃药"
+                    }
+                }
+            }
+            grid.addView(tv)
+            startCal.add(Calendar.DAY_OF_MONTH, 1)
+        }
+    }
+
+    /* ===================== 权限 ===================== */
+
     private fun checkNotificationPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+            val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
                 requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 false
-            } else {
-                true
-            }
-        } else {
-            true // Android 13 以下不需要运行时申请
-        }
+            } else true
+        } else true
     }
 
-    /**
-     * 检查精确闹钟权限
-     *
-     * Android 12+ 需要用户在系统设置里授权"精确闹钟"。
-     * Android 14+ 如果声明了 USE_EXACT_ALARM（普通权限），则自动授予，无需检查。
-     * 这里统一检查，没权限就引导用户去设置。
-     */
     private fun checkExactAlarmPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (alarmManager.canScheduleExactAlarms()) {
                 true
             } else {
-                // 引导用户去设置开启
-                Toast.makeText(
-                    this,
-                    "请允许精确闹钟权限，否则提醒可能不准时",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this, "请允许精确闹钟权限，否则提醒可能不准时", Toast.LENGTH_LONG).show()
                 try {
-                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                    intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
+                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply { data = Uri.parse("package:$packageName") })
                 } catch (e: Exception) {
-                    // 某些设备没有这个界面，跳到应用详情
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.parse("package:$packageName") })
                 }
                 false
             }
-        } else {
-            true
-        }
+        } else true
     }
 }

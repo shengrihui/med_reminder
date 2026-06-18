@@ -33,6 +33,12 @@
             </intent-filter>
         </activity>
 
+        <!-- 设置页 -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <!-- 闹钟响铃接收器 -->
         <receiver
             android:name=".AlarmReceiver"
