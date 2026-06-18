@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivityMainBinding
 import com.example.medreminder.databinding.ItemDrugCardBinding
 import com.example.medreminder.databinding.ItemTimeRowBinding
+import java.util.Calendar
 
 /**
  * 首页
@@ -73,8 +74,19 @@ class MainActivity : AppCompatActivity() {
         val list = binding.llDrugList
         list.removeAllViews()
 
-        // 只显示今天还没吃完的药（还有时间点未完成）
-        val pendingDrugs = drugs.filter { it.enabled && !DrugStore.isAllCompleted(this, it) }
+        val now = Calendar.getInstance()
+        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+
+        // 过滤：只显示 enabled 且有"未过+未完成"时间点的药品
+        val pendingDrugs = drugs.filter { drug ->
+            if (!drug.enabled) return@filter false
+            drug.times.indices.any { i ->
+                val time = drug.times[i]
+                val isCompleted = DrugStore.isCompleted(this, drug.id, i)
+                val isPast = (time.hour * 60 + time.minute) < nowMinutes
+                !isCompleted && !isPast
+            }
+        }
 
         if (pendingDrugs.isEmpty()) {
             binding.tvEmpty.visibility = View.VISIBLE
@@ -82,33 +94,49 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tvEmpty.visibility = View.GONE
 
-        // 按最早未完成时间点排序
+        // 按最早未完成且未过期的时间点排序
         val sortedPending = pendingDrugs.sortedBy { drug ->
             drug.times.indices
-                .filter { !DrugStore.isCompleted(this, drug.id, it) }
+                .filter { i ->
+                    val time = drug.times[i]
+                    val isCompleted = DrugStore.isCompleted(this, drug.id, i)
+                    val isPast = (time.hour * 60 + time.minute) < nowMinutes
+                    !isCompleted && !isPast
+                }
                 .minOfOrNull { drug.times[it].hour * 60 + drug.times[it].minute }
                 ?: Int.MAX_VALUE
         }
 
         for (drug in sortedPending) {
             val card = ItemDrugCardBinding.inflate(LayoutInflater.from(this), list, false)
-            bindDrugCard(card, drug)
+            bindDrugCard(card, drug, nowMinutes)
             list.addView(card.root)
         }
     }
 
-    private fun bindDrugCard(card: ItemDrugCardBinding, drug: Drug) {
+    private fun bindDrugCard(card: ItemDrugCardBinding, drug: Drug, nowMinutes: Int) {
         card.tvDrugName.text = drug.name
 
-        val remaining = DrugStore.remainingCount(this, drug)
-        card.tvRemaining.text = "${remaining}次未吃"
+        // 只统计"未过且未完成"的时间点
+        val pending = drug.times.indices.count { i ->
+            val time = drug.times[i]
+            val isCompleted = DrugStore.isCompleted(this, drug.id, i)
+            val isPast = (time.hour * 60 + time.minute) < nowMinutes
+            !isCompleted && !isPast
+        }
+        card.tvRemaining.text = "${pending}次未吃"
 
         val timesContainer = card.llTimes
         timesContainer.removeAllViews()
 
-        // 按时间排序索引（只显示未完成的）
+        // 按时间排序（只显示"未过且未完成"）
         val sortedIndices = drug.times.indices
-            .filter { !DrugStore.isCompleted(this, drug.id, it) }
+            .filter { i ->
+                val time = drug.times[i]
+                val isCompleted = DrugStore.isCompleted(this, drug.id, i)
+                val isPast = (time.hour * 60 + time.minute) < nowMinutes
+                !isCompleted && !isPast
+            }
             .sortedBy { drug.times[it].hour * 60 + drug.times[it].minute }
 
         for (i in sortedIndices) {

@@ -12,15 +12,13 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivityHistoryBinding
 import com.example.medreminder.databinding.ItemHistoryDrugBinding
 import com.example.medreminder.databinding.ItemHistoryRecordBinding
-import com.example.medreminder.databinding.ItemHistoryTimeBinding
 import java.util.Calendar
 
 /**
  * 历史记录页
  *
- * 按药品分类，每个药品下按时间点列出。
- * 每个时间点只显示有操作（吃了或忽略）的日期记录。
- * 没有操作的日期不显示。
+ * 按药品分类，每个药品下平铺列出"日期+时间点+状态"的记录。
+ * 只显示有操作（吃了或忽略）的记录，按时间倒序（最新在上）。
  */
 class HistoryActivity : AppCompatActivity() {
 
@@ -49,6 +47,17 @@ class HistoryActivity : AppCompatActivity() {
         return true
     }
 
+    /**
+     * 一条历史记录
+     */
+    private data class HistoryEntry(
+        val dateStr: String,
+        val calendar: Calendar,
+        val timeIndex: Int,
+        val timeStr: String,
+        val isTaken: Boolean
+    )
+
     private fun renderHistory() {
         val container = binding.llHistory
         container.removeAllViews()
@@ -75,57 +84,59 @@ class HistoryActivity : AppCompatActivity() {
         }
         container.addView(legend)
 
+        val todayStr = DrugStore.dateString(Calendar.getInstance())
+
         for (drug in drugs) {
             val card = ItemHistoryDrugBinding.inflate(LayoutInflater.from(this), container, false)
             card.tvDrugName.text = drug.name
 
-            // 按时间排序的时间点
-            val sortedIndices = drug.times.indices.sortedBy { drug.times[it].hour * 60 + drug.times[it].minute }
-
-            for (timeIndex in sortedIndices) {
-                val timeView = ItemHistoryTimeBinding.inflate(LayoutInflater.from(this), card.llTimes, false)
-                timeView.tvTime.text = drug.times[timeIndex].format()
-
-                // 收集最近 14 天内有操作的记录
-                val records = mutableListOf<Triple<String, Boolean, Calendar>>()
-                val cal = Calendar.getInstance()
-                for (i in 0 until 14) {
-                    val dateStr = DrugStore.dateString(cal)
+            // 收集该药品所有有操作的记录（按时间倒序：最新在上）
+            val entries = mutableListOf<HistoryEntry>()
+            val cal = Calendar.getInstance()
+            for (i in 0 until 14) {
+                val dateStr = DrugStore.dateString(cal)
+                for (timeIndex in drug.times.indices) {
                     val isTaken = DrugStore.isTakenOn(this, drug.id, timeIndex, dateStr)
                     val isIgnored = DrugStore.isIgnoredOn(this, drug.id, timeIndex, dateStr)
                     if (isTaken || isIgnored) {
-                        records.add(Triple(dateStr, isTaken, cal.clone() as Calendar))
-                    }
-                    cal.add(Calendar.DAY_OF_MONTH, -1)
-                }
-
-                if (records.isEmpty()) {
-                    timeView.tvNoRecord.visibility = android.view.View.VISIBLE
-                } else {
-                    timeView.tvNoRecord.visibility = android.view.View.GONE
-                    val todayStr = DrugStore.dateString(Calendar.getInstance())
-                    for ((dateStr, isTaken, dayCal) in records) {
-                        val row = ItemHistoryRecordBinding.inflate(LayoutInflater.from(this), timeView.llRecords, false)
-                        val monthDay = "${dayCal.get(Calendar.MONTH) + 1}月${dayCal.get(Calendar.DAY_OF_MONTH)}日"
-                        val isToday = dateStr == todayStr
-                        row.tvDate.text = if (isToday) "$monthDay 今天" else monthDay
-
-                        if (isTaken) {
-                            row.tvStatus.text = "已吃"
-                            row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_taken))
-                            row.dotStatus.setBackgroundResource(R.drawable.dot_taken)
-                        } else {
-                            row.tvStatus.text = "已忽略"
-                            row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_ignored))
-                            row.dotStatus.setBackgroundResource(R.drawable.dot_ignored)
-                        }
-
-                        row.root.contentDescription = "$monthDay ${if (isToday) "今天" else ""} ${row.tvStatus.text}"
-                        timeView.llRecords.addView(row.root)
+                        entries.add(
+                            HistoryEntry(
+                                dateStr = dateStr,
+                                calendar = cal.clone() as Calendar,
+                                timeIndex = timeIndex,
+                                timeStr = drug.times[timeIndex].format(),
+                                isTaken = isTaken
+                            )
+                        )
                     }
                 }
+                cal.add(Calendar.DAY_OF_MONTH, -1)
+            }
 
-                card.llTimes.addView(timeView.root)
+            if (entries.isEmpty()) {
+                card.tvNoRecord.visibility = android.view.View.VISIBLE
+            } else {
+                card.tvNoRecord.visibility = android.view.View.GONE
+                for (entry in entries) {
+                    val row = ItemHistoryRecordBinding.inflate(LayoutInflater.from(this), card.llRecords, false)
+                    val monthDay = "${entry.calendar.get(Calendar.MONTH) + 1}月${entry.calendar.get(Calendar.DAY_OF_MONTH)}日"
+                    val isToday = entry.dateStr == todayStr
+                    val dateLabel = if (isToday) "$monthDay 今天" else monthDay
+                    row.tvDateTime.text = "$dateLabel  $entry.timeStr"
+
+                    if (entry.isTaken) {
+                        row.tvStatus.text = "已吃"
+                        row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_taken))
+                        row.dotStatus.setBackgroundResource(R.drawable.dot_taken)
+                    } else {
+                        row.tvStatus.text = "已忽略"
+                        row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_ignored))
+                        row.dotStatus.setBackgroundResource(R.drawable.dot_ignored)
+                    }
+
+                    row.root.contentDescription = "$dateLabel $entry.timeStr ${row.tvStatus.text}"
+                    card.llRecords.addView(row.root)
+                }
             }
 
             container.addView(card.root)

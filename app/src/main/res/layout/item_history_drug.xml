@@ -26,11 +26,21 @@
             tools:text="阿司匹林" />
 
         <LinearLayout
-            android:id="@+id/llTimes"
+            android:id="@+id/llRecords"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="14dp"
             android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/tvNoRecord"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="暂无记录"
+            android:textColor="@color/text_hint"
+            android:textSize="15sp"
+            android:visibility="gone" />
 
     </LinearLayout>
 </androidx.cardview.widget.CardView>

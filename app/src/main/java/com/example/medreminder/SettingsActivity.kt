@@ -121,8 +121,9 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupListeners() {
         binding.btnAddTime.setOnClickListener {
-            // 默认用当前时间
+            // 默认用当前时间的下一分钟（避免和已有的同一小时:分钟重复）
             val cal = Calendar.getInstance()
+            cal.add(Calendar.MINUTE, 1)
             val newTime = ReminderTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
             // 检查时间点是否重复（同 hour:minute）
             if (times.any { it.hour == newTime.hour && it.minute == newTime.minute }) {
@@ -131,6 +132,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             times.add(newTime)
             renderTimes()
+            Toast.makeText(this, "已添加 ${newTime.format()}，请点'保存设置'生效", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnIntervalMinus.setOnClickListener {
