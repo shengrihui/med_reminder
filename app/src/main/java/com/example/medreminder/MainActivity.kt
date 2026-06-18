@@ -1,11 +1,16 @@
 package com.example.medreminder
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
@@ -18,7 +23,10 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivityMainBinding
 import com.example.medreminder.databinding.ItemDrugCardBinding
 import com.example.medreminder.databinding.ItemTimeRowBinding
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * 首页
@@ -59,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, ManageActivity::class.java))
         }
 
-        checkNotificationPermission()
+        checkAllPermissions()
     }
 
     override fun onResume() {
@@ -74,18 +82,10 @@ class MainActivity : AppCompatActivity() {
         val list = binding.llDrugList
         list.removeAllViews()
 
-        val now = Calendar.getInstance()
-        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-
-        // 过滤：只显示 enabled 且有"未过+未完成"时间点的药品
+        // 过滤：只显示 enabled 且当前/未来还有提醒的药品
         val pendingDrugs = drugs.filter { drug ->
             if (!drug.enabled) return@filter false
-            drug.times.indices.any { i ->
-                val time = drug.times[i]
-                val isCompleted = DrugStore.isCompleted(this, drug.id, i)
-                val isPast = (time.hour * 60 + time.minute) < nowMinutes
-                !isCompleted && !isPast
-            }
+            nextOccurrences(drug, 1).isNotEmpty()
         }
 
         if (pendingDrugs.isEmpty()) {
@@ -94,87 +94,185 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tvEmpty.visibility = View.GONE
 
-        // 按最早未完成且未过期的时间点排序
+        // 按第一个当前/未来提醒的时间排序
         val sortedPending = pendingDrugs.sortedBy { drug ->
-            drug.times.indices
-                .filter { i ->
-                    val time = drug.times[i]
-                    val isCompleted = DrugStore.isCompleted(this, drug.id, i)
-                    val isPast = (time.hour * 60 + time.minute) < nowMinutes
-                    !isCompleted && !isPast
-                }
-                .minOfOrNull { drug.times[it].hour * 60 + drug.times[it].minute }
-                ?: Int.MAX_VALUE
+            nextOccurrences(drug, 1).firstOrNull()?.let { (date, time) ->
+                dateTimeCalendar(date, time)?.timeInMillis ?: Long.MAX_VALUE
+            } ?: Long.MAX_VALUE
         }
 
         for (drug in sortedPending) {
             val card = ItemDrugCardBinding.inflate(LayoutInflater.from(this), list, false)
-            bindDrugCard(card, drug, nowMinutes)
+            bindDrugCard(card, drug)
             list.addView(card.root)
         }
     }
 
-    private fun bindDrugCard(card: ItemDrugCardBinding, drug: Drug, nowMinutes: Int) {
+    private fun bindDrugCard(card: ItemDrugCardBinding, drug: Drug) {
         card.tvDrugName.text = drug.name
-
-        // 只统计"未过且未完成"的时间点
-        val pending = drug.times.indices.count { i ->
-            val time = drug.times[i]
-            val isCompleted = DrugStore.isCompleted(this, drug.id, i)
-            val isPast = (time.hour * 60 + time.minute) < nowMinutes
-            !isCompleted && !isPast
-        }
-        card.tvRemaining.text = "${pending}次未吃"
 
         val timesContainer = card.llTimes
         timesContainer.removeAllViews()
 
-        // 按时间排序（只显示"未过且未完成"）
-        val sortedIndices = drug.times.indices
-            .filter { i ->
-                val time = drug.times[i]
-                val isCompleted = DrugStore.isCompleted(this, drug.id, i)
-                val isPast = (time.hour * 60 + time.minute) < nowMinutes
-                !isCompleted && !isPast
-            }
-            .sortedBy { drug.times[it].hour * 60 + drug.times[it].minute }
+        val occurrences = nextOccurrences(drug, 3)
+        card.tvRemaining.text = "未来${occurrences.size}次"
 
-        for (i in sortedIndices) {
+        val todayStr = DrugStore.dateString(Calendar.getInstance())
+
+        for ((index, pair) in occurrences.withIndex()) {
+            val (dateStr, time) = pair
             val row = ItemTimeRowBinding.inflate(LayoutInflater.from(this), timesContainer, false)
-            row.tvTime.text = drug.times[i].format()
-            row.root.contentDescription = "${drug.name} ${drug.times[i].format()}，未吃药"
 
-            // 吃了
-            row.btnTaken.setOnClickListener {
-                DrugStore.markTaken(this, drug.id, i)
-                ReminderManager.cancelRepeatAlarm(this, drug.id, i)
-                val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                nm.cancel(ReminderManager.notificationId(drug.id, i))
-                renderDrugList()
-                Toast.makeText(this, "${drug.name} ${drug.times[i].format()}：已标记吃药", Toast.LENGTH_SHORT).show()
-            }
+            row.tvDate.text = formatDateLabel(dateStr, todayStr)
+            row.tvTime.text = time.format()
+            row.root.contentDescription = "${drug.name} ${formatDateLabel(dateStr, todayStr)} ${time.format()}，未吃药"
 
-            // 忽略（不再提醒，但不算已吃，历史记录不计入已吃）
-            row.btnIgnore.setOnClickListener {
-                DrugStore.markIgnored(this, drug.id, i)
-                ReminderManager.cancelRepeatAlarm(this, drug.id, i)
-                val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                nm.cancel(ReminderManager.notificationId(drug.id, i))
-                renderDrugList()
-                Toast.makeText(this, "${drug.name} ${drug.times[i].format()}：已忽略", Toast.LENGTH_SHORT).show()
+            // 只有今天的第一个未来时间点才显示操作按钮
+            val isActionable = dateStr == todayStr && index == 0
+            if (!isActionable) {
+                row.btnTaken.visibility = View.GONE
+                row.btnIgnore.visibility = View.GONE
+                row.root.alpha = 0.7f
+            } else {
+                row.btnTaken.setOnClickListener {
+                    DrugStore.markTaken(this, drug.id, time)
+                    ReminderManager.cancelRepeatAlarm(this, drug.id, time)
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(ReminderManager.notificationId(drug.id, time))
+                    renderDrugList()
+                    Toast.makeText(this, "${drug.name} ${time.format()}：已标记吃药", Toast.LENGTH_SHORT).show()
+                }
+
+                row.btnIgnore.setOnClickListener {
+                    DrugStore.markIgnored(this, drug.id, time)
+                    ReminderManager.cancelRepeatAlarm(this, drug.id, time)
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(ReminderManager.notificationId(drug.id, time))
+                    renderDrugList()
+                    Toast.makeText(this, "${drug.name} ${time.format()}：已忽略", Toast.LENGTH_SHORT).show()
+                }
             }
 
             timesContainer.addView(row.root)
         }
     }
 
+    /* ===================== 工具 ===================== */
+
+    /** 取某药品接下来 count 个未完成的提醒（跨天），跳过已吃/已忽略的时间点 */
+    private fun nextOccurrences(drug: Drug, count: Int): List<Pair<String, ReminderTime>> {
+        val result = mutableListOf<Pair<String, ReminderTime>>()
+        val dayCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        for (offset in 0 until 90) {
+            val currentDay = dayCal.clone() as Calendar
+            currentDay.add(Calendar.DAY_OF_MONTH, offset)
+            val dateStr = DrugStore.dateString(currentDay)
+            if (!drug.isScheduledOn(dateStr)) continue
+            for (time in drug.times.sortedBy { it.hour * 60 + it.minute }) {
+                if (DrugStore.isCompletedOn(this, drug.id, time, dateStr)) continue
+                result.add(dateStr to time)
+            }
+            if (result.size >= count) break
+        }
+        return result.take(count)
+    }
+
+    private fun dateTimeCalendar(dateStr: String, time: ReminderTime): Calendar? {
+        return try {
+            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+            Calendar.getInstance().apply {
+                setTime(parser.parse(dateStr) ?: Date())
+                set(Calendar.HOUR_OF_DAY, time.hour)
+                set(Calendar.MINUTE, time.minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun formatDateLabel(dateStr: String, todayStr: String): String {
+        if (dateStr == todayStr) return "今天"
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+        val today = Calendar.getInstance().apply {
+            time = parser.parse(todayStr) ?: Date()
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val date = Calendar.getInstance().apply {
+            time = parser.parse(dateStr) ?: Date()
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val diffDays = ((date.timeInMillis - today.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()
+        return when (diffDays) {
+            1 -> "明天"
+            2 -> "后天"
+            else -> "${date.get(Calendar.MONTH) + 1}月${date.get(Calendar.DAY_OF_MONTH)}日"
+        }
+    }
+
     /* ===================== 权限 ===================== */
+
+    private fun checkAllPermissions() {
+        checkNotificationPermission()
+        checkExactAlarmPermission()
+        checkBatteryOptimization()
+    }
 
     private fun checkNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
                 requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    /** 检查精确闹钟权限（Android 12+） */
+    private fun checkExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Toast.makeText(this, "请允许精确闹钟权限，否则锁屏/后台时提醒不会准时响", Toast.LENGTH_LONG).show()
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (e: Exception) {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                }
+            }
+        }
+    }
+
+    /** 检查电池优化白名单（Android 6+） */
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Toast.makeText(this, "请将本应用加入电池优化白名单，否则后台提醒可能被延迟", Toast.LENGTH_LONG).show()
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (e: Exception) {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                }
             }
         }
     }

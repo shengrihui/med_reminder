@@ -4,8 +4,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="48dp"
-    android:layout_marginTop="6dp"
+    android:layout_height="52dp"
+    android:layout_marginTop="8dp"
     android:background="@drawable/bg_input"
     android:gravity="center_vertical"
     android:orientation="horizontal">
@@ -14,24 +14,24 @@
         android:id="@+id/btnPickTime"
         style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="0dp"
-        android:layout_height="48dp"
+        android:layout_height="52dp"
         android:layout_weight="1"
         android:contentDescription="选择提醒时间"
         android:gravity="start|center_vertical"
         android:minWidth="0dp"
-        android:paddingStart="12dp"
+        android:paddingStart="14dp"
         android:textColor="@color/text_primary"
-        android:textSize="16sp"
+        android:textSize="17sp"
         tools:text="21:00" />
 
     <Button
         android:id="@+id/btnRemoveTime"
         style="@style/Widget.MaterialComponents.Button.TextButton"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
         android:contentDescription="删除此时间点"
         android:minWidth="0dp"
         android:text="×"
         android:textColor="@color/status_not_taken"
-        android:textSize="22sp" />
+        android:textSize="24sp" />
 </LinearLayout>

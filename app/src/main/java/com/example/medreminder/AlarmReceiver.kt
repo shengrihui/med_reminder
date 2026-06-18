@@ -15,7 +15,7 @@ import androidx.core.app.NotificationCompat
 /**
  * 闹钟接收器
  *
- * 从 Intent 取 drugId 和 timeIndex，检查该时间点今天是否已吃。
+ * 从 Intent 取 drugId 和 time（hour/minute），检查该时间点今天是否已吃。
  * 没吃 → 发通知 + 注册重复提醒。
  */
 class AlarmReceiver : BroadcastReceiver() {
@@ -27,38 +27,39 @@ class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val drugId = intent.getIntExtra(ReminderManager.EXTRA_DRUG_ID, -1)
-        val timeIndex = intent.getIntExtra(ReminderManager.EXTRA_TIME_INDEX, -1)
-        Log.d(TAG, "收到闹钟, drugId=$drugId, timeIndex=$timeIndex")
-        if (drugId < 0 || timeIndex < 0) return
+        val hour = intent.getIntExtra(ReminderManager.EXTRA_HOUR, -1)
+        val minute = intent.getIntExtra(ReminderManager.EXTRA_MINUTE, -1)
+        val time = ReminderTime(hour, minute)
+        Log.d(TAG, "收到闹钟, drugId=$drugId, time=${time.format()}")
+        if (drugId < 0 || hour < 0 || minute < 0) return
 
         val drug = DrugStore.getDrug(context, drugId) ?: return
         if (!drug.enabled) return
-        if (timeIndex >= drug.times.size) return
+        if (!drug.times.any { it.hour == hour && it.minute == minute }) return
 
         // 已完成（已吃或已忽略）→ 跳过
-        if (DrugStore.isCompleted(context, drugId, timeIndex)) {
-            Log.d(TAG, "[${drug.name} ${drug.times[timeIndex].format()}] 今天已完成，跳过")
-            ReminderManager.scheduleDailyAlarm(context, drug, timeIndex)
+        if (DrugStore.isCompleted(context, drugId, time)) {
+            Log.d(TAG, "[${drug.name} ${time.format()}] 今天已完成，跳过")
+            ReminderManager.scheduleDailyAlarm(context, drug, time)
             return
         }
 
         // 没吃 → 发通知
-        showNotification(context, drug, timeIndex)
+        showNotification(context, drug, time)
 
         // 重复提醒
         if (drug.repeatMinutes > 0) {
-            ReminderManager.scheduleRepeatAlarm(context, drug, timeIndex)
+            ReminderManager.scheduleRepeatAlarm(context, drug, time)
         }
 
         // 下一次每日闹钟
-        ReminderManager.scheduleDailyAlarm(context, drug, timeIndex)
+        ReminderManager.scheduleDailyAlarm(context, drug, time)
     }
 
-    private fun showNotification(context: Context, drug: Drug, timeIndex: Int) {
+    private fun showNotification(context: Context, drug: Drug, time: ReminderTime) {
         createNotificationChannel(context)
 
-        val time = drug.times[timeIndex]
-        val notifId = ReminderManager.notificationId(drug.id, timeIndex)
+        val notifId = ReminderManager.notificationId(drug.id, time)
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -71,7 +72,8 @@ class AlarmReceiver : BroadcastReceiver() {
         val takenIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_TAKEN
             putExtra(ReminderManager.EXTRA_DRUG_ID, drug.id)
-            putExtra(ReminderManager.EXTRA_TIME_INDEX, timeIndex)
+            putExtra(ReminderManager.EXTRA_HOUR, time.hour)
+            putExtra(ReminderManager.EXTRA_MINUTE, time.minute)
         }
         val takenPending = PendingIntent.getBroadcast(
             context, notifId * 10 + 1, takenIntent,
@@ -81,7 +83,8 @@ class AlarmReceiver : BroadcastReceiver() {
         val laterIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_LATER
             putExtra(ReminderManager.EXTRA_DRUG_ID, drug.id)
-            putExtra(ReminderManager.EXTRA_TIME_INDEX, timeIndex)
+            putExtra(ReminderManager.EXTRA_HOUR, time.hour)
+            putExtra(ReminderManager.EXTRA_MINUTE, time.minute)
         }
         val laterPending = PendingIntent.getBroadcast(
             context, notifId * 10 + 2, laterIntent,

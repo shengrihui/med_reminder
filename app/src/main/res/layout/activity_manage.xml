@@ -35,13 +35,13 @@
     <Button
         android:id="@+id/btnAddNew"
         android:layout_width="match_parent"
-        android:layout_height="50dp"
+        android:layout_height="54dp"
         android:layout_marginHorizontal="20dp"
         android:layout_marginBottom="20dp"
         android:contentDescription="添加新药品"
         android:text="+ 添加药品"
-        android:textSize="16sp"
-        app:cornerRadius="12dp" />
+        android:textSize="17sp"
+        app:cornerRadius="14dp" />
 
     <TextView
         android:id="@+id/tvEmptyManage"

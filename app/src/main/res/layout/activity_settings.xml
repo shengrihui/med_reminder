@@ -34,20 +34,20 @@
                 android:labelFor="@id/etMedName"
                 android:text="药品名称"
                 android:textColor="@color/text_primary"
-                android:textSize="16sp" />
+                android:textSize="19sp" />
 
             <EditText
                 android:id="@+id/etMedName"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/bg_input"
                 android:inputType="text"
                 android:maxLength="20"
-                android:paddingHorizontal="12dp"
+                android:paddingHorizontal="14dp"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_hint"
-                android:textSize="16sp" />
+                android:textSize="20sp" />
 
             <!-- 提醒时间点 -->
             <TextView
@@ -56,7 +56,7 @@
                 android:layout_marginTop="20dp"
                 android:text="提醒时间点"
                 android:textColor="@color/text_primary"
-                android:textSize="16sp" />
+                android:textSize="19sp" />
 
             <LinearLayout
                 android:id="@+id/llTimes"
@@ -69,12 +69,12 @@
                 android:id="@+id/btnAddTime"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="8dp"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
                 android:contentDescription="添加新的提醒时间点"
                 android:text="+ 添加时间点"
-                android:textSize="14sp"
-                app:cornerRadius="10dp" />
+                android:textSize="16sp"
+                app:cornerRadius="12dp" />
 
             <!-- 服用频率 -->
             <TextView
@@ -83,11 +83,11 @@
                 android:layout_marginTop="20dp"
                 android:text="服用频率"
                 android:textColor="@color/text_primary"
-                android:textSize="16sp" />
+                android:textSize="19sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/bg_input"
                 android:gravity="center"
@@ -97,12 +97,12 @@
                     android:id="@+id/btnIntervalMinus"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:contentDescription="减少服用间隔天数"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="−"
-                    android:textSize="22sp" />
+                    android:textSize="28sp" />
 
                 <TextView
                     android:id="@+id/tvIntervalValue"
@@ -111,18 +111,48 @@
                     android:layout_weight="1"
                     android:gravity="center"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp" />
+                    android:textSize="20sp" />
 
                 <Button
                     android:id="@+id/btnIntervalPlus"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:contentDescription="增加服用间隔天数"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="+"
-                    android:textSize="22sp" />
+                    android:textSize="28sp" />
+            </LinearLayout>
+
+            <!-- 下一次开始日期（仅非每天时可用） -->
+            <TextView
+                android:id="@+id/tvStartDateLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="下一次开始日期"
+                android:textColor="@color/text_primary"
+                android:textSize="19sp" />
+
+            <LinearLayout
+                android:id="@+id/llStartDate"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_input"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp">
+
+                <TextView
+                    android:id="@+id/tvStartDateValue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp" />
             </LinearLayout>
 
             <!-- 重复提醒间隔 -->
@@ -132,11 +162,11 @@
                 android:layout_marginTop="20dp"
                 android:text="未确认时重复提醒间隔"
                 android:textColor="@color/text_primary"
-                android:textSize="16sp" />
+                android:textSize="19sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/bg_input"
                 android:gravity="center"
@@ -146,12 +176,12 @@
                     android:id="@+id/btnRepeatMinus"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:contentDescription="减少重复提醒间隔"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="−"
-                    android:textSize="22sp" />
+                    android:textSize="28sp" />
 
                 <TextView
                     android:id="@+id/tvRepeatValue"
@@ -160,41 +190,41 @@
                     android:layout_weight="1"
                     android:gravity="center"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp" />
+                    android:textSize="19sp" />
 
                 <Button
                     android:id="@+id/btnRepeatPlus"
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:contentDescription="增加重复提醒间隔"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:text="+"
-                    android:textSize="22sp" />
+                    android:textSize="28sp" />
             </LinearLayout>
 
             <!-- 保存按钮 -->
             <Button
                 android:id="@+id/btnSave"
                 android:layout_width="match_parent"
-                android:layout_height="50dp"
+                android:layout_height="54dp"
                 android:layout_marginTop="32dp"
                 android:text="保存设置"
-                android:textSize="16sp"
-                app:cornerRadius="12dp" />
+                android:textSize="19sp"
+                app:cornerRadius="14dp" />
 
             <!-- 删除按钮 -->
             <Button
                 android:id="@+id/btnDelete"
                 style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="12dp"
                 android:contentDescription="删除此药品"
                 android:text="删除此药品"
                 android:textColor="@color/status_not_taken"
-                android:textSize="14sp" />
+                android:textSize="16sp" />
 
             <View
                 android:layout_width="match_parent"

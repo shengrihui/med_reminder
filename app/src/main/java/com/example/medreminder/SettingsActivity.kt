@@ -1,6 +1,7 @@
 package com.example.medreminder
 
 import android.app.AlarmManager
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
@@ -18,7 +19,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivitySettingsBinding
 import com.example.medreminder.databinding.ItemTimeEditBinding
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * 编辑药品页
@@ -42,6 +46,7 @@ class SettingsActivity : AppCompatActivity() {
     private var times = mutableListOf<ReminderTime>()
     private var intervalDays = Drug.DEFAULT_INTERVAL_DAYS
     private var repeatMinutes = Drug.DEFAULT_REPEAT_MINUTES
+    private var startDate = DrugStore.dateString(Calendar.getInstance())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,10 +105,12 @@ class SettingsActivity : AppCompatActivity() {
         times = mutableListOf(ReminderTime.DEFAULT)
         intervalDays = Drug.DEFAULT_INTERVAL_DAYS
         repeatMinutes = Drug.DEFAULT_REPEAT_MINUTES
+        startDate = DrugStore.dateString(Calendar.getInstance())
         binding.etMedName.setText("")
         binding.etMedName.hint = "例如：阿司匹林"
         updateIntervalDisplay()
         updateRepeatDisplay()
+        updateStartDateDisplay()
     }
 
     /** 编辑模式：加载已有药品配置 */
@@ -112,9 +119,11 @@ class SettingsActivity : AppCompatActivity() {
         times = d.times.toMutableList()
         intervalDays = d.intervalDays
         repeatMinutes = d.repeatMinutes
+        startDate = d.startDate
         binding.etMedName.setText(d.name)
         updateIntervalDisplay()
         updateRepeatDisplay()
+        updateStartDateDisplay()
     }
 
     /* ===================== 监听 ===================== */
@@ -142,8 +151,13 @@ class SettingsActivity : AppCompatActivity() {
             if (intervalDays < 30) { intervalDays++; updateIntervalDisplay() }
         }
 
+        binding.llStartDate.setOnClickListener {
+            if (intervalDays == 1) return@setOnClickListener
+            openStartDatePicker()
+        }
+
         binding.btnRepeatMinus.setOnClickListener {
-            if (repeatMinutes > 5) { repeatMinutes -= 5; updateRepeatDisplay() }
+            if (repeatMinutes > 0) { repeatMinutes -= 5; updateRepeatDisplay() }
         }
         binding.btnRepeatPlus.setOnClickListener {
             if (repeatMinutes < 120) { repeatMinutes += 5; updateRepeatDisplay() }
@@ -166,7 +180,10 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, "已存在同名药品「$name」，请改名", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-                val created = DrugStore.createDrug(this, name, times.toList(), intervalDays, repeatMinutes)
+                val created = DrugStore.createDrug(
+                    this, name, times.toList(), intervalDays, repeatMinutes,
+                    if (intervalDays == 1) DrugStore.dateString(Calendar.getInstance()) else startDate
+                )
                 if (created == null) {
                     Toast.makeText(this, "创建失败，请重试", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
@@ -188,7 +205,8 @@ class SettingsActivity : AppCompatActivity() {
                     name = name,
                     times = times.toList(),
                     intervalDays = intervalDays,
-                    repeatMinutes = repeatMinutes
+                    repeatMinutes = repeatMinutes,
+                    startDate = if (intervalDays == 1) DrugStore.dateString(Calendar.getInstance()) else startDate
                 )
                 DrugStore.saveDrug(this, updated)
                 // 重新注册闹钟；权限不足时仍然保存，并提示用户去授权
@@ -252,8 +270,12 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, "至少保留一个时间点", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-                times.removeAt(index)
-                renderTimes()
+                // 重新查找当前时间点在 times 中的实际索引
+                val actualIndex = times.indexOf(time)
+                if (actualIndex >= 0) {
+                    times.removeAt(actualIndex)
+                    renderTimes()
+                }
             }
 
             container.addView(row.root)
@@ -290,14 +312,50 @@ class SettingsActivity : AppCompatActivity() {
             2 -> "隔天"
             else -> "每${intervalDays}天"
         }
+        updateStartDateDisplay()
     }
 
     private fun updateRepeatDisplay() {
         binding.tvRepeatValue.text = when {
+            repeatMinutes == 0 -> "不重复"
             repeatMinutes < 60 -> "${repeatMinutes}分钟"
             repeatMinutes % 60 == 0 -> "${repeatMinutes / 60}小时"
             else -> "${repeatMinutes}分钟"
         }
+    }
+
+    private fun updateStartDateDisplay() {
+        val isDaily = intervalDays == 1
+        if (isDaily) {
+            binding.tvStartDateValue.text = "今天（每天）"
+            binding.llStartDate.isEnabled = false
+            binding.llStartDate.isClickable = false
+            binding.llStartDate.alpha = 0.4f
+            binding.tvStartDateLabel.alpha = 0.4f
+        } else {
+            binding.tvStartDateValue.text = startDate
+            binding.llStartDate.isEnabled = true
+            binding.llStartDate.isClickable = true
+            binding.llStartDate.alpha = 1f
+            binding.tvStartDateLabel.alpha = 1f
+        }
+    }
+
+    private fun openStartDatePicker() {
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+        val cal = Calendar.getInstance().apply {
+            time = parser.parse(startDate) ?: Date()
+        }
+        DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                startDate = String.format(Locale.CHINA, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                updateStartDateDisplay()
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
     }
 
     companion object {

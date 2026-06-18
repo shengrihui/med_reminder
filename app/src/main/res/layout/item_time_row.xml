@@ -1,49 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 单个时间点行（在药品卡片展开内容里） -->
+<!-- 首页：单个 upcoming 时间点行 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp">
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp">
 
+    <!-- 日期标签：今天 / 6月18日 -->
+    <TextView
+        android:id="@+id/tvDate"
+        android:layout_width="68dp"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_hint"
+        android:textSize="16sp"
+        tools:text="今天" />
+
+    <!-- 时间点：核心信息，更粗更大 -->
     <TextView
         android:id="@+id/tvTime"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:textColor="@color/text_primary"
-        android:textSize="16sp"
+        android:textSize="22sp"
+        android:textStyle="bold"
         tools:text="21:00" />
 
     <Button
         android:id="@+id/btnTaken"
         style="@style/Widget.MaterialComponents.Button"
         android:layout_width="wrap_content"
-        android:layout_height="40dp"
+        android:layout_height="44dp"
         android:layout_marginEnd="8dp"
         android:contentDescription="标记此时间点已吃药"
         android:minWidth="0dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
         android:text="吃了"
-        android:textSize="13sp"
-        app:cornerRadius="8dp"
-        xmlns:app="http://schemas.android.com/apk/res-auto" />
+        android:textSize="15sp"
+        app:cornerRadius="8dp" />
 
     <Button
         android:id="@+id/btnIgnore"
         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
         android:layout_width="wrap_content"
-        android:layout_height="40dp"
+        android:layout_height="44dp"
         android:contentDescription="忽略此时间点的提醒"
         android:minWidth="0dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
         android:text="忽略"
-        android:textSize="13sp"
-        app:cornerRadius="8dp"
-        xmlns:app="http://schemas.android.com/apk/res-auto" />
+        android:textSize="15sp"
+        app:cornerRadius="8dp" />
 </LinearLayout>
