@@ -81,7 +81,15 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tvEmpty.visibility = View.GONE
 
-        for (drug in pendingDrugs) {
+        // 按最早未完成时间点排序
+        val sortedDrugs = pendingDrugs.sortedBy { drug ->
+            drug.times.indices
+                .filter { !DrugStore.isTaken(this, drug.id, it) }
+                .minOfOrNull { drug.times[it].hour * 60 + drug.times[it].minute }
+                ?: Int.MAX_VALUE
+        }
+
+        for (drug in sortedDrugs) {
             val card = ItemDrugCardBinding.inflate(LayoutInflater.from(this), list, false)
             bindDrugCard(card, drug)
             list.addView(card.root)
@@ -94,13 +102,16 @@ class MainActivity : AppCompatActivity() {
         val remaining = DrugStore.remainingCount(this, drug)
         card.tvRemaining.text = "${remaining}次未吃"
 
-        // 渲染未完成的时间点
+        // 渲染未完成的时间点（按时间排序）
         val timesContainer = card.llTimes
         timesContainer.removeAllViews()
 
-        for (i in drug.times.indices) {
-            if (DrugStore.isTaken(this, drug.id, i)) continue  // 已吃的跳过
+        // 按时间排序索引
+        val sortedIndices = drug.times.indices
+            .filter { !DrugStore.isTaken(this, drug.id, it) }
+            .sortedBy { drug.times[it].hour * 60 + drug.times[it].minute }
 
+        for (i in sortedIndices) {
             val row = ItemTimeRowBinding.inflate(LayoutInflater.from(this), timesContainer, false)
             row.tvTime.text = drug.times[i].format()
 

@@ -1,7 +1,13 @@
 package com.example.medreminder
 
+import android.app.AlarmManager
 import android.app.TimePickerDialog
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -11,12 +17,14 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivitySettingsBinding
 import com.example.medreminder.databinding.ItemTimeEditBinding
+import java.util.Calendar
 
 /**
  * 编辑药品页
  *
  * - 接收 drugId，加载药品配置
- * - 支持多个提醒时间点的增删改
+ * - 支持多个提醒时间点的增删改（添加时默认当前时间）
+ * - 时间点按时间排序显示（不改变存储索引）
  * - 服用频率、重复间隔（步进器）
  * - 保存、删除
  */
@@ -56,8 +64,10 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
 
+        // 设置 Toolbar
+        setSupportActionBar(binding.toolbar)
+        binding.toolbar.title = "编辑药品"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "编辑：${drug?.name}"
 
         loadConfig()
         setupListeners()
@@ -85,7 +95,9 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupListeners() {
         binding.btnAddTime.setOnClickListener {
-            times.add(ReminderTime.DEFAULT)
+            // 默认用当前时间
+            val cal = Calendar.getInstance()
+            times.add(ReminderTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)))
             renderTimes()
         }
 
@@ -124,6 +136,7 @@ class SettingsActivity : AppCompatActivity() {
             // 重新注册闹钟
             ReminderManager.cancelAllAlarms(this, d.id)
             if (updated.enabled) {
+                if (!checkExactAlarmPermission()) return@setOnClickListener
                 ReminderManager.scheduleAllDailyAlarms(this, updated)
             }
             Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
@@ -145,16 +158,20 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /* ===================== 时间点列表 ===================== */
+    /* ===================== 时间点列表（按时间排序显示） ===================== */
 
     private fun renderTimes() {
         val container = binding.llTimes
         container.removeAllViews()
 
-        for ((index, time) in times.withIndex()) {
+        // 按时间排序索引，但不改变 times 列表的实际顺序
+        val sortedIndices = times.indices.sortedBy { times[it].hour * 60 + times[it].minute }
+
+        for (index in sortedIndices) {
+            val time = times[index]
             val row = ItemTimeEditBinding.inflate(LayoutInflater.from(this), container, false)
             row.btnPickTime.text = time.format()
-            row.btnPickTime.contentDescription = "第${index + 1}个时间点，${time.format()}，点击修改"
+            row.btnPickTime.contentDescription = "时间点 ${time.format()}，点击修改"
 
             row.btnPickTime.setOnClickListener {
                 TimePickerDialog(this, { _, h, m ->
@@ -174,6 +191,28 @@ class SettingsActivity : AppCompatActivity() {
 
             container.addView(row.root)
         }
+    }
+
+    /* ===================== 权限 ===================== */
+
+    private fun checkExactAlarmPermission(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Toast.makeText(this, "请允许精确闹钟权限，否则提醒可能不准时", Toast.LENGTH_LONG).show()
+                try {
+                    startActivity(Intent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM").apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (e: Exception) {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                }
+                return false
+            }
+        }
+        return true
     }
 
     /* ===================== 显示 ===================== */

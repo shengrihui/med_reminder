@@ -6,6 +6,8 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.media.AudioAttributes
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -90,8 +92,11 @@ class AlarmReceiver : BroadcastReceiver() {
             .setSmallIcon(R.drawable.ic_med)
             .setContentTitle("吃药提醒")
             .setContentText("该吃${drug.name}了（${time.format()}），记得吃药哦～")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(openPending)
             .addAction(R.drawable.ic_med, "已吃药", takenPending)
             .addAction(R.drawable.ic_med, "稍后提醒", laterPending)
@@ -110,6 +115,18 @@ class AlarmReceiver : BroadcastReceiver() {
                 description = "按时吃药提醒通知"
                 enableVibration(true)
                 enableLights(true)
+                lightColor = Color.RED
+                // 锁屏显示完整内容
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                // 显示桌面角标
+                setShowBadge(true)
+                // 默认通知铃声
+                val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                val audioAttributes = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .build()
+                setSound(soundUri, audioAttributes)
             }
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
