@@ -125,7 +125,7 @@ class MainActivity : AppCompatActivity() {
 
             row.tvDate.text = formatDateLabel(dateStr, todayStr)
             row.tvTime.text = time.format()
-            row.root.contentDescription = "${drug.name} ${formatDateLabel(dateStr, todayStr)} ${time.format()}，未吃药"
+            row.root.contentDescription = "${drug.name} ${formatDateLabel(dateStr, todayStr)} ${time.format()}，未用药"
 
             // 只有今天的第一个未来时间点才显示操作按钮
             val isActionable = dateStr == todayStr && index == 0
@@ -140,7 +140,7 @@ class MainActivity : AppCompatActivity() {
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(ReminderManager.notificationId(drug.id, time))
                     renderDrugList()
-                    Toast.makeText(this, "${drug.name} ${time.format()}：已标记吃药", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "${drug.name} ${time.format()}：已标记用药", Toast.LENGTH_SHORT).show()
                 }
 
                 row.btnIgnore.setOnClickListener {

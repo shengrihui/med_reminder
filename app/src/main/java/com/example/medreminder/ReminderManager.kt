@@ -188,7 +188,7 @@ object ReminderManager {
 
     /**
      * 使用 AlarmClock 注册每日提醒。
-     * AlarmClock 会强制唤醒设备并绕过 Doze/应用待机限制，是吃药提醒最可靠的方式。
+     * AlarmClock 会强制唤醒设备并绕过 Doze/应用待机限制，是用药提醒最可靠的方式。
      */
     private fun setAlarmClock(
         context: Context,

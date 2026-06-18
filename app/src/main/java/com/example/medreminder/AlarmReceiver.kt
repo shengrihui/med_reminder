@@ -93,15 +93,15 @@ class AlarmReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_med)
-            .setContentTitle("吃药提醒")
-            .setContentText("该吃${drug.name}了（${time.format()}），记得吃药哦～")
+            .setContentTitle("用药提醒")
+            .setContentText("该用${drug.name}了（${time.format()}），记得用药哦～")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(openPending)
-            .addAction(R.drawable.ic_med, "已吃药", takenPending)
+            .addAction(R.drawable.ic_med, "已用药", takenPending)
             .addAction(R.drawable.ic_med, "稍后提醒", laterPending)
             .build()
 
@@ -113,9 +113,9 @@ class AlarmReceiver : BroadcastReceiver() {
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "吃药提醒", NotificationManager.IMPORTANCE_HIGH
+                CHANNEL_ID, "用药提醒", NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "按时吃药提醒通知"
+                description = "按时用药提醒通知"
                 enableVibration(true)
                 enableLights(true)
                 lightColor = Color.RED

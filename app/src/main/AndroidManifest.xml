@@ -57,7 +57,7 @@
             android:name=".AlarmReceiver"
             android:exported="false" />
 
-        <!-- 通知按钮"已吃药"接收器 -->
+        <!-- 通知按钮"已用药"接收器 -->
         <receiver
             android:name=".NotificationActionReceiver"
             android:exported="false" />

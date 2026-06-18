@@ -8,7 +8,7 @@ import android.util.Log
 
 /**
  * 通知按钮处理
- * - "已吃药"：标记该时间点已吃，取消通知和重复提醒
+ * - "已用药"：标记该时间点已用，取消通知和重复提醒
  * - "稍后提醒"：取消当前通知，等重复闹钟自动触发
  */
 class NotificationActionReceiver : BroadcastReceiver() {
@@ -33,7 +33,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
     }
 
     private fun handleTaken(context: Context, drugId: Int, time: ReminderTime) {
-        Log.d(TAG, "已吃药, drugId=$drugId, time=${time.format()}")
+        Log.d(TAG, "已用药, drugId=$drugId, time=${time.format()}")
         val drug = DrugStore.getDrug(context, drugId) ?: return
         if (!drug.times.any { it.hour == time.hour && it.minute == time.minute }) return
 
