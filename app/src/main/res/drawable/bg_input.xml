@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 输入框圆角背景 -->
+<!-- 输入框/列表项圆角背景，颜色引用 colors.xml 自动适配夜间 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@android:color/white" />
+    <solid android:color="@color/bg_input" />
     <corners android:radius="12dp" />
-    <stroke android:width="1dp" android:color="#E0E0E0" />
+    <stroke android:width="1dp" android:color="@color/divider" />
 </shape>

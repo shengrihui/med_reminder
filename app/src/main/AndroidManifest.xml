@@ -33,9 +33,15 @@
             </intent-filter>
         </activity>
 
-        <!-- 设置页 -->
+        <!-- 设置页（编辑药品） -->
         <activity
             android:name=".SettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".ManageActivity" />
+
+        <!-- 管理页（药品列表） -->
+        <activity
+            android:name=".ManageActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 

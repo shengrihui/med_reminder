@@ -2,31 +2,33 @@ package com.example.medreminder
 
 import android.app.TimePickerDialog
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivitySettingsBinding
+import com.example.medreminder.databinding.ItemTimeEditBinding
 
 /**
- * 设置页
+ * 编辑药品页
  *
- * 功能：
- * - 药品名称
- * - 检查时间（TimePickerDialog）
- * - 服用频率（可调节步进器：1-30天）
- * - 重复提醒间隔（可调节步进器：5-120分钟，步长5分钟）
- * - 保存设置
+ * - 接收 drugId，加载药品配置
+ * - 支持多个提醒时间点的增删改
+ * - 服用频率、重复间隔（步进器）
+ * - 保存、删除
  */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
+    private var drugId: Int = -1
+    private var drug: Drug? = null
 
-    private var selectedHour = ReminderManager.DEFAULT_HOUR
-    private var selectedMinute = ReminderManager.DEFAULT_MINUTE
-    private var intervalDays = ReminderManager.DEFAULT_INTERVAL_DAYS
-    private var repeatMinutes = ReminderManager.DEFAULT_REPEAT_MINUTES
+    private var times = mutableListOf<ReminderTime>()
+    private var intervalDays = Drug.DEFAULT_INTERVAL_DAYS
+    private var repeatMinutes = Drug.DEFAULT_REPEAT_MINUTES
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,12 +42,26 @@ class SettingsActivity : AppCompatActivity() {
             insets
         }
 
-        // 标题栏返回按钮
+        drugId = intent.getIntExtra(ReminderManager.EXTRA_DRUG_ID, -1)
+        if (drugId < 0) {
+            Toast.makeText(this, "药品不存在", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        drug = DrugStore.getDrug(this, drugId)
+        if (drug == null) {
+            Toast.makeText(this, "药品不存在", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "设置"
+        supportActionBar?.title = "编辑：${drug?.name}"
 
         loadConfig()
         setupListeners()
+        renderTimes()
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -53,88 +69,114 @@ class SettingsActivity : AppCompatActivity() {
         return true
     }
 
-    private fun loadConfig() {
-        selectedHour = ReminderManager.getHour(this)
-        selectedMinute = ReminderManager.getMinute(this)
-        intervalDays = ReminderManager.getIntervalDays(this)
-        repeatMinutes = ReminderManager.getRepeatMinutes(this)
+    /* ===================== 加载 ===================== */
 
-        binding.etMedName.setText(ReminderManager.getMedName(this))
-        binding.btnPickTime.text = String.format("%02d:%02d", selectedHour, selectedMinute)
+    private fun loadConfig() {
+        val d = drug ?: return
+        times = d.times.toMutableList()
+        intervalDays = d.intervalDays
+        repeatMinutes = d.repeatMinutes
+        binding.etMedName.setText(d.name)
         updateIntervalDisplay()
         updateRepeatDisplay()
     }
 
+    /* ===================== 监听 ===================== */
+
     private fun setupListeners() {
-        // 时间选择
-        binding.btnPickTime.setOnClickListener {
-            TimePickerDialog(this, { _, hour, minute ->
-                selectedHour = hour
-                selectedMinute = minute
-                binding.btnPickTime.text = String.format("%02d:%02d", hour, minute)
-            }, selectedHour, selectedMinute, true).show()
+        binding.btnAddTime.setOnClickListener {
+            times.add(ReminderTime.DEFAULT)
+            renderTimes()
         }
 
-        // 服用频率 - 减
         binding.btnIntervalMinus.setOnClickListener {
-            if (intervalDays > 1) {
-                intervalDays--
-                updateIntervalDisplay()
-            }
+            if (intervalDays > 1) { intervalDays--; updateIntervalDisplay() }
         }
-
-        // 服用频率 - 加
         binding.btnIntervalPlus.setOnClickListener {
-            if (intervalDays < 30) {
-                intervalDays++
-                updateIntervalDisplay()
-            }
+            if (intervalDays < 30) { intervalDays++; updateIntervalDisplay() }
         }
 
-        // 重复提醒 - 减
         binding.btnRepeatMinus.setOnClickListener {
-            if (repeatMinutes > 5) {
-                repeatMinutes -= 5
-                updateRepeatDisplay()
-            }
+            if (repeatMinutes > 5) { repeatMinutes -= 5; updateRepeatDisplay() }
         }
-
-        // 重复提醒 - 加
         binding.btnRepeatPlus.setOnClickListener {
-            if (repeatMinutes < 120) {
-                repeatMinutes += 5
-                updateRepeatDisplay()
-            }
+            if (repeatMinutes < 120) { repeatMinutes += 5; updateRepeatDisplay() }
         }
 
-        // 保存
         binding.btnSave.setOnClickListener {
-            val medName = binding.etMedName.text.toString().trim()
-            if (medName.isEmpty()) {
+            val name = binding.etMedName.text.toString().trim()
+            if (name.isEmpty()) {
                 Toast.makeText(this, "请输入药品名称", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-
-            ReminderManager.saveConfig(
-                this,
-                selectedHour,
-                selectedMinute,
-                intervalDays,
-                repeatMinutes,
-                medName,
-                ReminderManager.isEnabled(this) // 保持开关状态不变
-            )
-
-            // 如果提醒已开启，重新注册闹钟
-            if (ReminderManager.isEnabled(this)) {
-                ReminderManager.cancelAllAlarms(this)
-                ReminderManager.scheduleDailyAlarm(this)
+            if (times.isEmpty()) {
+                Toast.makeText(this, "至少需要一个提醒时间点", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-
+            val d = drug ?: return@setOnClickListener
+            val updated = d.copy(
+                name = name,
+                times = times.toList(),
+                intervalDays = intervalDays,
+                repeatMinutes = repeatMinutes
+            )
+            DrugStore.saveDrug(this, updated)
+            // 重新注册闹钟
+            ReminderManager.cancelAllAlarms(this, d.id)
+            if (updated.enabled) {
+                ReminderManager.scheduleAllDailyAlarms(this, updated)
+            }
             Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
             finish()
         }
+
+        binding.btnDelete.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("删除药品")
+                .setMessage("确定删除「${drug?.name}」吗？所有提醒和历史记录都会清除。")
+                .setPositiveButton("删除") { _, _ ->
+                    ReminderManager.cancelAllAlarms(this, drugId)
+                    DrugStore.deleteDrug(this, drugId)
+                    Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
     }
+
+    /* ===================== 时间点列表 ===================== */
+
+    private fun renderTimes() {
+        val container = binding.llTimes
+        container.removeAllViews()
+
+        for ((index, time) in times.withIndex()) {
+            val row = ItemTimeEditBinding.inflate(LayoutInflater.from(this), container, false)
+            row.btnPickTime.text = time.format()
+            row.btnPickTime.contentDescription = "第${index + 1}个时间点，${time.format()}，点击修改"
+
+            row.btnPickTime.setOnClickListener {
+                TimePickerDialog(this, { _, h, m ->
+                    times[index] = ReminderTime(h, m)
+                    renderTimes()
+                }, time.hour, time.minute, true).show()
+            }
+
+            row.btnRemoveTime.setOnClickListener {
+                if (times.size <= 1) {
+                    Toast.makeText(this, "至少保留一个时间点", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                times.removeAt(index)
+                renderTimes()
+            }
+
+            container.addView(row.root)
+        }
+    }
+
+    /* ===================== 显示 ===================== */
 
     private fun updateIntervalDisplay() {
         binding.tvIntervalValue.text = when (intervalDays) {
@@ -147,7 +189,8 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateRepeatDisplay() {
         binding.tvRepeatValue.text = when {
             repeatMinutes < 60 -> "${repeatMinutes}分钟"
-            else -> "${repeatMinutes / 60}小时"
+            repeatMinutes % 60 == 0 -> "${repeatMinutes / 60}小时"
+            else -> "${repeatMinutes}分钟"
         }
     }
 }

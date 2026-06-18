@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜间模式颜色 -->
+<resources>
+    <color name="bg_page">#121212</color>
+    <color name="bg_card">#1E1E1E</color>
+    <color name="bg_input">#2A2A2A</color>
+    <color name="text_primary">#EEEEEE</color>
+    <color name="text_secondary">#CCCCCC</color>
+    <color name="text_hint">#888888</color>
+    <color name="divider">#333333</color>
+    <color name="status_taken">#4CAF50</color>
+    <color name="status_not_taken">#F44336</color>
+    <color name="calendar_normal">#2A2A2A</color>
+</resources>
