@@ -169,10 +169,8 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, "创建失败，请重试", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-                if (!checkExactAlarmPermission()) {
-                    // 即使权限不足也保留药品，只是闹钟可能不准
-                    Toast.makeText(this, "药品已保存，但请授权精确闹钟权限", Toast.LENGTH_LONG).show()
-                } else {
+                // 注册闹钟；权限不足时仍然保存药品，并提示用户去授权
+                if (checkExactAlarmPermission()) {
                     ReminderManager.scheduleAllDailyAlarms(this, created)
                 }
                 Toast.makeText(this, "已添加药品「$name」", Toast.LENGTH_SHORT).show()
@@ -191,11 +189,12 @@ class SettingsActivity : AppCompatActivity() {
                     repeatMinutes = repeatMinutes
                 )
                 DrugStore.saveDrug(this, updated)
-                // 重新注册闹钟
+                // 重新注册闹钟；权限不足时仍然保存，并提示用户去授权
                 ReminderManager.cancelAllAlarms(this, d.id)
                 if (updated.enabled) {
-                    if (!checkExactAlarmPermission()) return@setOnClickListener
-                    ReminderManager.scheduleAllDailyAlarms(this, updated)
+                    if (checkExactAlarmPermission()) {
+                        ReminderManager.scheduleAllDailyAlarms(this, updated)
+                    }
                 }
                 Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
                 finish()

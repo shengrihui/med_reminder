@@ -50,19 +50,16 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        binding.btnAddDrug.setOnClickListener {
-            // 进入新建模式，保存时才真正创建药品
-            startActivity(Intent(this, SettingsActivity::class.java).apply {
-                putExtra(SettingsActivity.EXTRA_IS_NEW, true)
-            })
-        }
-
         binding.btnManage.setOnClickListener {
             startActivity(Intent(this, ManageActivity::class.java))
         }
 
         binding.btnHistory.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
+        }
+
+        binding.btnManageBottom.setOnClickListener {
+            startActivity(Intent(this, ManageActivity::class.java))
         }
 
         checkNotificationPermission()

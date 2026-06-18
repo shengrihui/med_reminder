@@ -96,15 +96,37 @@ class HistoryActivity : AppCompatActivity() {
             }
             card.tvSummary.text = "最近14天已吃 $takenCount/$totalSlots 次"
 
-            // 14 天列表（从今天往前）
-            val today = Calendar.getInstance()
+            // 14 天列表（从今天往前），只显示有操作的日期
+            val activeDays = mutableListOf<Calendar>()
             for (i in 0 until 14) {
                 val dayCal = Calendar.getInstance().apply {
                     add(Calendar.DAY_OF_MONTH, -i)
                 }
-                val row = ItemHistoryDayBinding.inflate(LayoutInflater.from(this), card.llTimes, false)
-                bindDayRow(row, drug, dayCal, i == 0)
-                card.llTimes.addView(row.root)
+                val dateStr = DrugStore.dateString(dayCal)
+                val hasAction = drug.times.indices.any { timeIndex ->
+                    DrugStore.isTakenOn(this, drug.id, timeIndex, dateStr) ||
+                            DrugStore.isIgnoredOn(this, drug.id, timeIndex, dateStr)
+                }
+                if (hasAction) {
+                    activeDays.add(dayCal)
+                }
+            }
+
+            if (activeDays.isEmpty()) {
+                val tv = TextView(this).apply {
+                    text = "最近14天无记录"
+                    setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.text_hint))
+                    textSize = 14f
+                    setPadding(0, 8, 0, 8)
+                }
+                card.llTimes.addView(tv)
+            } else {
+                val todayStr = DrugStore.dateString(Calendar.getInstance())
+                for (dayCal in activeDays) {
+                    val row = ItemHistoryDayBinding.inflate(LayoutInflater.from(this), card.llTimes, false)
+                    bindDayRow(row, drug, dayCal, DrugStore.dateString(dayCal) == todayStr)
+                    card.llTimes.addView(row.root)
+                }
             }
 
             container.addView(card.root)
