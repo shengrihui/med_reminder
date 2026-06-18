@@ -24,8 +24,8 @@ import com.example.medreminder.databinding.ItemTimeRowBinding
  *
  * - 只显示今天还没吃完的药（已吃/已忽略的时间点不显示）
  * - 每个时间点有"吃了""忽略"按钮
- * - 顶部右侧：历史、管理 入口
- * - 底部：添加药品
+ * - 顶部右侧：历史 入口
+ * - 底部：管理药品
  */
 class MainActivity : AppCompatActivity() {
 
@@ -48,10 +48,6 @@ class MainActivity : AppCompatActivity() {
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
-        }
-
-        binding.btnManage.setOnClickListener {
-            startActivity(Intent(this, ManageActivity::class.java))
         }
 
         binding.btnHistory.setOnClickListener {
