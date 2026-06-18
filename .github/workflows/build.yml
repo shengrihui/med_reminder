@@ -32,9 +32,11 @@ jobs:
         run: ./gradlew assembleDebug
 
       - name: Upload APK to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/debug/app-debug.apk
+          tag_name: ${{ github.sha }}
+          name: MedReminder v${{ github.sha }}
           body: |
             # MedReminder v0.1
 
@@ -47,5 +49,6 @@ jobs:
 
             ### 系统要求
             - Android 8.0 (API 26) 及以上
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
