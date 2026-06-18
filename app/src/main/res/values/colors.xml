@@ -9,6 +9,7 @@
     <color name="text_hint">#999999</color>
     <color name="divider">#E0E0E0</color>
     <color name="status_taken">#4CAF50</color>
+    <color name="status_ignored">#FFA726</color>
     <color name="status_not_taken">#F44336</color>
     <color name="calendar_normal">#F0F0F0</color>
 </resources>

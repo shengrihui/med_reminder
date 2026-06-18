@@ -97,7 +97,13 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnAddTime.setOnClickListener {
             // 默认用当前时间
             val cal = Calendar.getInstance()
-            times.add(ReminderTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)))
+            val newTime = ReminderTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+            // 检查时间点是否重复（同 hour:minute）
+            if (times.any { it.hour == newTime.hour && it.minute == newTime.minute }) {
+                Toast.makeText(this, "已存在相同的时间点 ${newTime.format()}，请选其他时间", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            times.add(newTime)
             renderTimes()
         }
 
@@ -125,7 +131,12 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "至少需要一个提醒时间点", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // 检查药品名称是否与其他药品重复
             val d = drug ?: return@setOnClickListener
+            if (DrugStore.isDrugNameDuplicate(this, name, excludeId = d.id)) {
+                Toast.makeText(this, "已存在同名药品「$name」，请改名", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             val updated = d.copy(
                 name = name,
                 times = times.toList(),
@@ -175,6 +186,12 @@ class SettingsActivity : AppCompatActivity() {
 
             row.btnPickTime.setOnClickListener {
                 TimePickerDialog(this, { _, h, m ->
+                    // 检查是否与其他时间点重复（排除自己）
+                    val duplicate = times.indices.any { it != index && times[it].hour == h && times[it].minute == m }
+                    if (duplicate) {
+                        Toast.makeText(this, "已存在相同的时间点 ${"%02d:%02d".format(h, m)}", Toast.LENGTH_SHORT).show()
+                        return@TimePickerDialog
+                    }
                     times[index] = ReminderTime(h, m)
                     renderTimes()
                 }, time.hour, time.minute, true).show()

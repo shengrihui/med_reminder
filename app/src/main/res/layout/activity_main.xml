@@ -31,6 +31,35 @@
         app:layout_constraintBottom_toBottomOf="@id/tvTitle"
         app:layout_constraintStart_toEndOf="@id/tvTitle" />
 
+    <!-- 历史记录按钮（右上角） -->
+    <Button
+        android:id="@+id/btnHistory"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="12dp"
+        android:contentDescription="查看历史记录"
+        android:minWidth="0dp"
+        android:text="历史"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@id/tvTitle"
+        app:layout_constraintEnd_toStartOf="@id/btnManage" />
+
+    <Button
+        android:id="@+id/btnManage"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="20dp"
+        android:contentDescription="管理药品"
+        android:minWidth="0dp"
+        android:text="管理"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@id/tvTitle"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- 药品列表（滚动区域） -->
     <ScrollView
         android:id="@+id/scrollView"
@@ -44,24 +73,63 @@
         app:layout_constraintTop_toBottomOf="@id/tvTitle">
 
         <LinearLayout
-            android:id="@+id/llDrugList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
-            android:paddingBottom="20dp" />
+            android:paddingBottom="20dp">
+
+            <!-- 待吃药列表 -->
+            <LinearLayout
+                android:id="@+id/llDrugList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- 今日已完成区域 -->
+            <LinearLayout
+                android:id="@+id/llCompletedSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="12dp"
+                    android:background="@color/divider" />
+
+                <TextView
+                    android:id="@+id/tvCompletedTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="今日已完成"
+                    android:textColor="@color/text_hint"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:id="@+id/llCompletedList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </LinearLayout>
     </ScrollView>
 
-    <!-- 底部管理药品按钮 -->
+    <!-- 底部添加药品按钮 -->
     <Button
         android:id="@+id/btnAddDrug"
-        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        style="@style/Widget.MaterialComponents.Button"
         android:layout_width="0dp"
         android:layout_height="50dp"
         android:layout_marginHorizontal="20dp"
         android:layout_marginBottom="20dp"
-        android:contentDescription="管理药品"
-        android:text="管理药品"
+        android:contentDescription="添加新药品"
+        android:text="+ 添加药品"
         android:textSize="16sp"
         app:cornerRadius="12dp"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -75,7 +143,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:padding="40dp"
-        android:text="今天都吃完啦！\n或点击下方管理药品"
+        android:text="今天都吃完啦！\n或点击下方添加药品"
         android:textColor="@color/text_hint"
         android:textSize="16sp"
         android:visibility="gone"

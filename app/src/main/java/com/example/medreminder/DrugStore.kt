@@ -11,13 +11,20 @@ import java.util.Locale
  *
  * 用 SharedPreferences + JSON 存储多个药品。
  * 历史记录按 "drugId|timeIndex|yyyy-MM-dd" 格式存储，支持多时间点独立确认。
+ *
+ * 两种"完成"状态：
+ * - taken：已吃药（历史记录显示绿色）
+ * - ignored：已忽略（不再提醒，历史记录显示黄色，不算已吃）
+ *
+ * 首页过滤逻辑：某时间点 taken 或 ignored 都算"已完成"，不再显示。
  */
 object DrugStore {
 
     private const val PREFS_NAME = "med_reminder_prefs"
     private const val KEY_DRUGS = "drugs_json"
     private const val KEY_NEXT_ID = "next_drug_id"
-    private const val KEY_TAKEN = "taken_records"  // Set<String>，格式 "drugId|timeIndex|date"
+    private const val KEY_TAKEN = "taken_records"    // Set<String>，格式 "drugId|timeIndex|date"
+    private const val KEY_IGNORED = "ignored_records" // Set<String>，格式 "drugId|timeIndex|date"
 
     /* ===================== 药品 CRUD ===================== */
 
@@ -56,24 +63,44 @@ object DrugStore {
         persist(context, list)
     }
 
-    fun addDrug(context: Context, name: String): Drug {
+    /**
+     * 添加药品。如果同名药品已存在（忽略首尾空格），返回 null。
+     * 调用方应先调用 isDrugNameDuplicate 检查并提示用户。
+     */
+    fun addDrug(context: Context, name: String): Drug? {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return null
+        if (isDrugNameDuplicate(context, trimmedName, excludeId = -1)) return null
+
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val newId = sp.getInt(KEY_NEXT_ID, 1)
         sp.edit().putInt(KEY_NEXT_ID, newId + 1).apply()
 
-        val drug = Drug.createDefault(id = newId, name = name)
+        val drug = Drug.createDefault(id = newId, name = trimmedName)
         val list = getAllDrugs(context).toMutableList()
         list.add(drug)
         persist(context, list)
         return drug
     }
 
+    /** 检查药品名称是否重复（忽略首尾空格、大小写）。excludeId 用于编辑时排除自己。 */
+    fun isDrugNameDuplicate(context: Context, name: String, excludeId: Int): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        return getAllDrugs(context).any { it.id != excludeId && it.name.trim() == trimmed }
+    }
+
     fun deleteDrug(context: Context, drugId: Int) {
-        // 清理该药品的历史记录
+        // 清理该药品的历史记录（taken + ignored）
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val taken = sp.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
         taken.removeAll { it.startsWith("$drugId|") }
-        sp.edit().putStringSet(KEY_TAKEN, taken).apply()
+        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
+        ignored.removeAll { it.startsWith("$drugId|") }
+        sp.edit()
+            .putStringSet(KEY_TAKEN, taken)
+            .putStringSet(KEY_IGNORED, ignored)
+            .apply()
 
         val list = getAllDrugs(context).filter { it.id != drugId }
         persist(context, list)
@@ -106,8 +133,36 @@ object DrugStore {
     fun markTaken(context: Context, drugId: Int, timeIndex: Int) {
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val taken = sp.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
-        taken.add(recordKey(drugId, timeIndex, todayString()))
-        sp.edit().putStringSet(KEY_TAKEN, taken).apply()
+        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val key = recordKey(drugId, timeIndex, todayString())
+        taken.add(key)
+        ignored.remove(key) // 已吃则移除忽略标记
+        sp.edit()
+            .putStringSet(KEY_TAKEN, taken)
+            .putStringSet(KEY_IGNORED, ignored)
+            .apply()
+    }
+
+    /** 标记某药品某时间点今天已忽略（不再提醒，但不算已吃） */
+    fun markIgnored(context: Context, drugId: Int, timeIndex: Int) {
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
+        ignored.add(recordKey(drugId, timeIndex, todayString()))
+        sp.edit().putStringSet(KEY_IGNORED, ignored).apply()
+    }
+
+    /** 撤销某药品某时间点今天的完成状态（同时清除 taken 和 ignored） */
+    fun undoCompleted(context: Context, drugId: Int, timeIndex: Int) {
+        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val taken = sp.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val key = recordKey(drugId, timeIndex, todayString())
+        taken.remove(key)
+        ignored.remove(key)
+        sp.edit()
+            .putStringSet(KEY_TAKEN, taken)
+            .putStringSet(KEY_IGNORED, ignored)
+            .apply()
     }
 
     /** 某药品某时间点今天是否已吃 */
@@ -117,19 +172,45 @@ object DrugStore {
         return taken.contains(recordKey(drugId, timeIndex, todayString()))
     }
 
-    /** 某药品今天是否所有时间点都已吃 */
-    fun isAllTaken(context: Context, drug: Drug): Boolean {
-        if (drug.times.isEmpty()) return true
-        return drug.times.indices.all { isTaken(context, drug.id, it) }
+    /** 某药品某时间点今天是否已忽略 */
+    fun isIgnored(context: Context, drugId: Int, timeIndex: Int): Boolean {
+        val ignored = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_IGNORED, emptySet()) ?: emptySet()
+        return ignored.contains(recordKey(drugId, timeIndex, todayString()))
     }
 
-    /** 某药品今天还有几个时间点没吃 */
+    /** 某药品某时间点今天是否已完成（已吃或已忽略） */
+    fun isCompleted(context: Context, drugId: Int, timeIndex: Int): Boolean {
+        return isTaken(context, drugId, timeIndex) || isIgnored(context, drugId, timeIndex)
+    }
+
+    /** 某药品某时间点指定日期是否已吃 */
+    fun isTakenOn(context: Context, drugId: Int, timeIndex: Int, dateStr: String): Boolean {
+        val taken = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_TAKEN, emptySet()) ?: emptySet()
+        return taken.contains(recordKey(drugId, timeIndex, dateStr))
+    }
+
+    /** 某药品某时间点指定日期是否已忽略 */
+    fun isIgnoredOn(context: Context, drugId: Int, timeIndex: Int, dateStr: String): Boolean {
+        val ignored = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_IGNORED, emptySet()) ?: emptySet()
+        return ignored.contains(recordKey(drugId, timeIndex, dateStr))
+    }
+
+    /** 某药品今天是否所有时间点都已完成（已吃或已忽略） */
+    fun isAllCompleted(context: Context, drug: Drug): Boolean {
+        if (drug.times.isEmpty()) return true
+        return drug.times.indices.all { isCompleted(context, drug.id, it) }
+    }
+
+    /** 某药品今天还有几个时间点未完成 */
     fun remainingCount(context: Context, drug: Drug): Int {
         if (drug.times.isEmpty()) return 0
-        return drug.times.indices.count { !isTaken(context, drug.id, it) }
+        return drug.times.indices.count { !isCompleted(context, drug.id, it) }
     }
 
-    /** 获取某药品某时间点最近 N 天的记录 */
+    /** 获取某药品某时间点最近 N 天的记录（返回日期 → 是否已吃，忽略不计入已吃） */
     fun getHistory(context: Context, drugId: Int, timeIndex: Int, days: Int = 14): List<Pair<String, Boolean>> {
         val taken = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getStringSet(KEY_TAKEN, emptySet()) ?: emptySet()

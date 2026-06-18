@@ -35,9 +35,9 @@ class AlarmReceiver : BroadcastReceiver() {
         if (!drug.enabled) return
         if (timeIndex >= drug.times.size) return
 
-        // 已吃 → 跳过
-        if (DrugStore.isTaken(context, drugId, timeIndex)) {
-            Log.d(TAG, "[${drug.name} ${drug.times[timeIndex].format()}] 今天已吃，跳过")
+        // 已完成（已吃或已忽略）→ 跳过
+        if (DrugStore.isCompleted(context, drugId, timeIndex)) {
+            Log.d(TAG, "[${drug.name} ${drug.times[timeIndex].format()}] 今天已完成，跳过")
             ReminderManager.scheduleDailyAlarm(context, drug, timeIndex)
             return
         }

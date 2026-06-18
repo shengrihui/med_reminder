@@ -45,6 +45,12 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <!-- 历史记录页 -->
+        <activity
+            android:name=".HistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <!-- 闹钟响铃接收器 -->
         <receiver
             android:name=".AlarmReceiver"
