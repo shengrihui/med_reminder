@@ -2,6 +2,13 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = java.util.Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        load(keystorePropertiesFile.inputStream())
+    }
+}
+
 android {
     namespace = "com.example.medreminder"
     compileSdk {
@@ -14,14 +21,27 @@ android {
         applicationId = "com.example.medreminder"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "v0.5.6"
+        versionCode = 6
+        versionName = "v0.5.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(keystoreProperties["storeFile"] as String)
+            storePassword = keystoreProperties["storePassword"] as String
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }
