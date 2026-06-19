@@ -1,0 +1,77 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+        <!-- 1. 米黄色圆角背景 -->
+        <path android:pathData="M 10 10 L 190 10 A 20 20 0 0 1 210 30 L 210 170 A 20 20 0 0 1 190 190 L 10 190 A 20 20 0 0 1 -10 170 L -10 30 A 20 20 0 0 1 10 10 Z" android:fillColor="#FDF6E3" />
+
+        <!-- ================= 2. 【矮胖铃铛 + 顶珠在铃铛后方半隐】 ================= -->
+        <!-- 左铃铛 (倾斜-20度；顶珠先画，被铃铛本体遮住下半部) -->
+        <group android:translateX="68" android:translateY="42" android:rotation="-20">
+                <!-- 左顶珠黑框 (位于铃铛后方) -->
+                <path android:pathData="M 0 -26 A 6 6 0 1 1 0 -14 A 6 6 0 1 1 0 -26 Z" android:fillColor="#222222" />
+                <!-- 左顶珠橙色 -->
+                <path android:pathData="M 0 -25 A 5 5 0 1 1 0 -15 A 5 5 0 1 1 0 -25 Z" android:fillColor="#FF8C00" />
+                <!-- 左铃铛黑框 (矮胖) -->
+                <path android:pathData="M -12 -8 A 12 12 0 0 1 12 -8 L 12 4 L -12 4 Z" android:fillColor="#222222" />
+                <!-- 左铃铛橙色 -->
+                <path android:pathData="M -10 -8 A 10 10 0 0 1 10 -8 L 10 4 L -10 4 Z" android:fillColor="#FF8C00" />
+        </group>
+
+        <!-- 右铃铛 (倾斜20度；顶珠先画，被铃铛本体遮住下半部) -->
+        <group android:translateX="132" android:translateY="42" android:rotation="20">
+                <!-- 右顶珠黑框 (位于铃铛后方) -->
+                <path android:pathData="M 0 -26 A 6 6 0 1 1 0 -14 A 6 6 0 1 1 0 -26 Z" android:fillColor="#222222" />
+                <!-- 右顶珠橙色 -->
+                <path android:pathData="M 0 -25 A 5 5 0 1 1 0 -15 A 5 5 0 1 1 0 -25 Z" android:fillColor="#FF8C00" />
+                <!-- 右铃铛黑框 (矮胖) -->
+                <path android:pathData="M -12 -8 A 12 12 0 0 1 12 -8 L 12 4 L -12 4 Z" android:fillColor="#222222" />
+                <!-- 右铃铛橙色 -->
+                <path android:pathData="M -10 -8 A 10 10 0 0 1 10 -8 L 10 4 L -10 4 Z" android:fillColor="#FF8C00" />
+        </group>
+
+        <!-- 顶部蓝色按钮 (底部延伸至表盘内部，消除间隙) -->
+        <path android:pathData="M 88 20 L 112 20 A 4 4 0 0 1 116 24 L 116 42 A 2 2 0 0 1 114 44 L 86 44 A 2 2 0 0 1 84 42 L 84 24 A 4 4 0 0 1 88 20 Z" android:fillColor="#222222" />
+        <path android:pathData="M 91 22 L 109 22 A 2 2 0 0 1 111 24 L 111 42 A 2 2 0 0 1 109 44 L 91 44 A 2 2 0 0 1 89 42 L 89 24 A 2 2 0 0 1 91 22 Z" android:fillColor="#4DA6FF" />
+
+        <!-- ================= 3. 闹钟外壳 & 表盘 ================= -->
+        <path android:pathData="M 36 100 A 64 64 0 1 1 164 100 A 64 64 0 1 1 36 100 Z" android:fillColor="#222222" />
+        <path android:pathData="M 38 100 A 62 62 0 1 1 162 100 A 62 62 0 1 1 38 100 Z" android:fillColor="#4DA6FF" />
+        <path android:pathData="M 52 100 A 48 48 0 1 1 148 100 A 48 48 0 1 1 52 100 Z" android:fillColor="#222222" />
+        <path android:pathData="M 54 100 A 46 46 0 1 1 146 100 A 46 46 0 1 1 54 100 Z" android:fillColor="#FFFFFF" />
+
+        <!-- ================= 4. 【缩短】不与指针碰撞的刻度 ================= -->
+        <path android:pathData="M 96 58 A 4 4 0 0 1 104 58 L 104 60 A 4 4 0 0 1 96 60 Z" android:fillColor="#FF8C00" />
+        <path android:pathData="M 140 96 L 142 96 A 4 4 0 0 1 142 104 L 140 104 A 4 4 0 0 1 140 96 Z" android:fillColor="#FF8C00" />
+        <path android:pathData="M 96 140 A 4 4 0 0 1 104 140 L 104 142 A 4 4 0 0 1 96 142 Z" android:fillColor="#FF8C00" />
+        <path android:pathData="M 58 96 L 60 96 A 4 4 0 0 1 60 104 L 58 104 A 4 4 0 0 1 58 96 Z" android:fillColor="#FF8C00" />
+
+        <!-- ================= 5. 两根短黑指针 ================= -->
+        <group android:translateX="100" android:translateY="100" android:rotation="0">
+                <path android:pathData="M -4 -28 A 4 4 0 0 1 4 -28 L 4 0 L -4 0 Z" android:fillColor="#222222" />
+        </group>
+        <group android:translateX="100" android:translateY="100" android:rotation="90">
+                <path android:pathData="M -3 -20 A 3 3 0 0 1 3 -20 L 3 0 L -3 0 Z" android:fillColor="#222222" />
+        </group>
+        <path android:pathData="M 91 100 A 9 9 0 1 1 109 100 A 9 9 0 1 1 91 100 Z" android:fillColor="#222222" />
+
+        <!-- ================= 6. 底部白色托盘 (四周含底边均有黑边) ================= -->
+        <path android:pathData="M 35 167 h 130 A 16 16 0 0 1 181 183 h -162 A 16 16 0 0 1 35 167 Z" android:fillColor="#222222" />
+        <path android:pathData="M 37 169 L 163 169 A 12 12 0 0 1 175 181 L 25 181 A 12 12 0 0 1 37 169 Z" android:fillColor="#FFFFFF" />
+
+        <!-- ================= 7. 【圆润胶囊】药丸 (上移，不超出托盘底部) ================= -->
+        <path android:pathData="M 64 148 L 136 148 A 16 16 0 0 1 136 180 L 64 180 A 16 16 0 0 1 64 148 Z" android:fillColor="#222222" />
+        <path android:pathData="M 100 150 L 64 150 A 14 14 0 0 0 64 178 L 100 178 Z" android:fillColor="#FF8C00" />
+        <path android:pathData="M 100 150 L 136 150 A 14 14 0 0 1 136 178 L 100 178 Z" android:fillColor="#FFFFFF" />
+
+        <!-- ================= 9. 【加大黑色】带白色高光的眼睛 ================= -->
+        <!-- 左眼 -->
+        <path android:pathData="M 76 94 A 6 6 0 1 1 88 94 A 6 6 0 1 1 76 94 Z" android:fillColor="#222222" />
+        <path android:pathData="M 78 92 A 2.5 2.5 0 1 1 78 97 A 2.5 2.5 0 1 1 78 92 Z" android:fillColor="#FFFFFF" />
+        <!-- 右眼 -->
+        <path android:pathData="M 112 94 A 6 6 0 1 1 124 94 A 6 6 0 1 1 112 94 Z" android:fillColor="#222222" />
+        <path android:pathData="M 114 92 A 2.5 2.5 0 1 1 114 97 A 2.5 2.5 0 1 1 114 92 Z" android:fillColor="#FFFFFF" />
+
+</vector>
