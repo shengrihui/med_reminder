@@ -162,7 +162,9 @@ class MainActivity : AppCompatActivity() {
     /** 取某药品接下来 count 个未完成的提醒（跨天），跳过已吃/已忽略的时间点 */
     private fun nextOccurrences(drug: Drug, count: Int): List<Pair<String, ReminderTime>> {
         val result = mutableListOf<Pair<String, ReminderTime>>()
-        val dayCal = Calendar.getInstance().apply {
+        val now = Calendar.getInstance()
+        val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        val dayCal = (now.clone() as Calendar).apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -175,6 +177,8 @@ class MainActivity : AppCompatActivity() {
             if (!drug.isScheduledOn(dateStr)) continue
             for (time in drug.times.sortedBy { it.hour * 60 + it.minute }) {
                 if (DrugStore.isCompletedOn(this, drug.id, time, dateStr)) continue
+                // 今天已过去的时间点不再显示（避免标记最新时间点后，早些时候未操作的时间点冒出来）
+                if (offset == 0 && (time.hour * 60 + time.minute) < nowMinutes) continue
                 result.add(dateStr to time)
             }
             if (result.size >= count) break

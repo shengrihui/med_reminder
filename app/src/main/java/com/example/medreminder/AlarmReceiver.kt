@@ -22,7 +22,8 @@ class AlarmReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "AlarmReceiver"
-        private const val CHANNEL_ID = "med_reminder_channel"
+        private const val CHANNEL_ID = "med_reminder_channel_v2"
+        private const val OLD_CHANNEL_ID = "med_reminder_channel"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -112,11 +113,20 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // 删除旧渠道（旧渠道可能没有声音配置，且创建后无法修改），强制使用新渠道
+            try {
+                nm.deleteNotificationChannel(OLD_CHANNEL_ID)
+            } catch (e: Exception) {
+                Log.w(TAG, "删除旧通知渠道失败", e)
+            }
+
             val channel = NotificationChannel(
                 CHANNEL_ID, "用药提醒", NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "按时用药提醒通知"
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 300, 500)
                 enableLights(true)
                 lightColor = Color.RED
                 // 锁屏显示完整内容
@@ -131,7 +141,6 @@ class AlarmReceiver : BroadcastReceiver() {
                     .build()
                 setSound(soundUri, audioAttributes)
             }
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         }
     }
