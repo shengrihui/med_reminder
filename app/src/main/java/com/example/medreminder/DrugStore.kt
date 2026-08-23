@@ -1,32 +1,41 @@
 package com.example.medreminder
 
 import android.content.Context
-import android.content.SharedPreferences.Editor
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
-/**
- * 药品存储管理器
- *
- * 用 SharedPreferences + JSON 存储多个药品。
- * 历史记录按 "drugId|计划时间HH:mm|日期yyyy-MM-dd|实际操作时间HH:mm" 格式存储，
- * 以"时间"为标识，避免时间点增删导致错位；同时记录实际操作时间，用于历史记录显示和排序。
- *
- * 两种"完成"状态：
- * - taken：已用药（历史记录显示绿色）
- * - ignored：已忽略（不再提醒，历史记录显示黄色，不算已吃）
- *
- * 首页过滤逻辑：某时间点 taken 或 ignored 都算"已完成"，不再显示。
- */
+/** 药品、服药任务状态和历史记录的本地存储。 */
 object DrugStore {
 
     private const val PREFS_NAME = "med_reminder_prefs"
     private const val KEY_DRUGS = "drugs_json"
     private const val KEY_NEXT_ID = "next_drug_id"
-    private const val KEY_TAKEN = "taken_records"    // Set<String>，格式 "drugId|计划HH:mm|date|实际HH:mm"
-    private const val KEY_IGNORED = "ignored_records" // Set<String>，格式同上
+    private const val KEY_LEGACY_TAKEN = "taken_records"
+    private const val KEY_LEGACY_IGNORED = "ignored_records"
+
+    // v3 记录：drugId|scheduleKey|date|actualTime|plannedTimes|scheduleLabel
+    private const val KEY_TAKEN = "dose_taken_records_v3"
+    private const val KEY_SKIPPED = "dose_skipped_records_v3"
+    private const val KEY_MISSED = "dose_missed_records_v3"
+    private const val KEY_RECORDS_MIGRATED = "dose_records_migrated_v3"
+    private const val KEY_LAST_RECONCILED_DATE = "last_reconciled_date_v3"
+
+    enum class HistoryStatus { TAKEN, SKIPPED, MISSED }
+
+    data class HistoryRecord(
+        val drugId: Int,
+        val drugName: String,
+        val scheduleKey: Int,
+        val scheduleLabel: String,
+        val plannedTimes: List<ReminderTime>,
+        val dateStr: String,
+        val actualTimeStr: String,
+        val status: HistoryStatus
+    )
 
     /* ===================== 药品 CRUD ===================== */
 
@@ -34,366 +43,375 @@ object DrugStore {
         val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_DRUGS, null) ?: return emptyList()
         return try {
-            val arr = JSONArray(json)
-            (0 until arr.length()).map { i ->
-                val obj = arr.getJSONObject(i)
-                val timesArr = obj.getJSONArray("times")
-                val times = (0 until timesArr.length()).map { j ->
-                    ReminderTime.from(timesArr.getString(j)) ?: ReminderTime.DEFAULT
-                }
-                Drug(
-                    id = obj.getInt("id"),
-                    name = obj.getString("name"),
-                    times = times,
-                    intervalDays = obj.getInt("intervalDays"),
-                    repeatMinutes = obj.getInt("repeatMinutes"),
-                    enabled = obj.getBoolean("enabled"),
-                    startDate = obj.optString("startDate", dateString(Calendar.getInstance()))
-                )
-            }
-        } catch (e: Exception) {
+            val array = JSONArray(json)
+            (0 until array.length()).map { parseDrug(array.getJSONObject(it)) }
+        } catch (_: Exception) {
             emptyList()
         }
     }
+
+    private fun parseDrug(obj: JSONObject): Drug {
+        val schedulesJson = obj.optJSONArray("schedules")
+        val schedules = if (schedulesJson != null) {
+            (0 until schedulesJson.length()).map { index ->
+                val scheduleObj = schedulesJson.getJSONObject(index)
+                DoseSchedule(
+                    scheduleKey = scheduleObj.optInt("scheduleKey", index + 1),
+                    reminderTimes = parseTimes(scheduleObj.getJSONArray("reminderTimes"))
+                )
+            }.filter { it.reminderTimes.isNotEmpty() }
+        } else {
+            // 旧数据无法推断哪些时间属于同一次服药，因此每个旧时间安全地迁移为独立安排。
+            parseTimes(obj.optJSONArray("times") ?: JSONArray()).mapIndexed { index, time ->
+                DoseSchedule(index + 1, listOf(time))
+            }
+        }
+
+        return Drug(
+            id = obj.getInt("id"),
+            name = obj.getString("name"),
+            schedules = schedules.ifEmpty { listOf(DoseSchedule(1, listOf(ReminderTime.DEFAULT))) },
+            intervalDays = obj.optInt("intervalDays", Drug.DEFAULT_INTERVAL_DAYS),
+            repeatMinutes = obj.optInt("repeatMinutes", Drug.DEFAULT_REPEAT_MINUTES),
+            enabled = obj.optBoolean("enabled", true),
+            startDate = obj.optString("startDate", todayString())
+        )
+    }
+
+    private fun parseTimes(array: JSONArray): List<ReminderTime> =
+        (0 until array.length()).mapNotNull { ReminderTime.from(array.optString(it)) }
 
     fun getDrug(context: Context, drugId: Int): Drug? =
         getAllDrugs(context).find { it.id == drugId }
 
     fun saveDrug(context: Context, drug: Drug) {
         val list = getAllDrugs(context).toMutableList()
-        val idx = list.indexOfFirst { it.id == drug.id }
-        if (idx >= 0) list[idx] = drug else list.add(drug)
+        val index = list.indexOfFirst { it.id == drug.id }
+        if (index >= 0) list[index] = drug else list.add(drug)
         persist(context, list)
     }
 
-    /**
-     * 添加药品。如果同名药品已存在（忽略首尾空格），返回 null。
-     * 调用方应先调用 isDrugNameDuplicate 检查并提示用户。
-     */
-    fun addDrug(context: Context, name: String): Drug? {
-        val trimmedName = name.trim()
-        if (trimmedName.isEmpty()) return null
-        if (isDrugNameDuplicate(context, trimmedName, excludeId = -1)) return null
-
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val newId = sp.getInt(KEY_NEXT_ID, 1)
-        sp.edit().putInt(KEY_NEXT_ID, newId + 1).commit()
-
-        val drug = Drug.createDefault(id = newId, name = trimmedName)
-        val list = getAllDrugs(context).toMutableList()
-        list.add(drug)
-        persist(context, list)
-        return drug
-    }
-
-    /**
-     * 创建药品（完整配置一次性写入）。用于"新建药品"流程：编辑页保存时才创建。
-     * 如果同名药品已存在，返回 null。
-     */
     fun createDrug(
         context: Context,
         name: String,
-        times: List<ReminderTime>,
+        schedules: List<DoseSchedule>,
         intervalDays: Int,
         repeatMinutes: Int,
         startDate: String
     ): Drug? {
         val trimmedName = name.trim()
-        if (trimmedName.isEmpty()) return null
-        if (times.isEmpty()) return null
+        if (trimmedName.isEmpty() || schedules.isEmpty() || schedules.any { it.reminderTimes.isEmpty() }) return null
         if (isDrugNameDuplicate(context, trimmedName, excludeId = -1)) return null
 
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val newId = sp.getInt(KEY_NEXT_ID, 1)
-        sp.edit().putInt(KEY_NEXT_ID, newId + 1).commit()
-
+        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val newId = preferences.getInt(KEY_NEXT_ID, 1)
+        preferences.edit().putInt(KEY_NEXT_ID, newId + 1).commit()
         val drug = Drug(
             id = newId,
             name = trimmedName,
-            times = times,
+            schedules = schedules,
             intervalDays = intervalDays,
             repeatMinutes = repeatMinutes,
             enabled = true,
             startDate = startDate
         )
-        val list = getAllDrugs(context).toMutableList()
-        list.add(drug)
-        persist(context, list)
+        persist(context, getAllDrugs(context) + drug)
         return drug
     }
 
-    /** 检查药品名称是否重复（忽略首尾空格、大小写）。excludeId 用于编辑时排除自己。 */
     fun isDrugNameDuplicate(context: Context, name: String, excludeId: Int): Boolean {
         val trimmed = name.trim()
-        if (trimmed.isEmpty()) return false
-        return getAllDrugs(context).any { it.id != excludeId && it.name.trim() == trimmed }
+        return trimmed.isNotEmpty() && getAllDrugs(context).any {
+            it.id != excludeId && it.name.trim().equals(trimmed, ignoreCase = true)
+        }
     }
 
     fun deleteDrug(context: Context, drugId: Int) {
-        // 清理该药品的历史记录（taken + ignored）
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val taken = sp.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
-        taken.removeAll { it.startsWith("$drugId|") }
-        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
-        ignored.removeAll { it.startsWith("$drugId|") }
-        sp.edit()
-            .putStringSet(KEY_TAKEN, taken)
-            .putStringSet(KEY_IGNORED, ignored)
-            .commit()
-
-        val list = getAllDrugs(context).filter { it.id != drugId }
-        persist(context, list)
+        deleteAllRecordsForDrug(context, drugId)
+        persist(context, getAllDrugs(context).filter { it.id != drugId })
     }
 
-    private fun persist(context: Context, list: List<Drug>) {
-        val arr = JSONArray()
-        for (d in list) {
-            val timesArr = JSONArray()
-            for (t in d.times) timesArr.put(t.toJson())
-            arr.put(JSONObject().apply {
-                put("id", d.id)
-                put("name", d.name)
-                put("times", timesArr)
-                put("intervalDays", d.intervalDays)
-                put("repeatMinutes", d.repeatMinutes)
-                put("enabled", d.enabled)
-                put("startDate", d.startDate)
+    private fun persist(context: Context, drugs: List<Drug>) {
+        val array = JSONArray()
+        drugs.forEach { drug ->
+            val schedulesJson = JSONArray()
+            drug.schedules.forEach { schedule ->
+                schedulesJson.put(JSONObject().apply {
+                    put("scheduleKey", schedule.scheduleKey)
+                    put("reminderTimes", JSONArray().apply {
+                        schedule.reminderTimes.forEach { put(it.toJson()) }
+                    })
+                })
+            }
+            array.put(JSONObject().apply {
+                put("id", drug.id)
+                put("name", drug.name)
+                put("schedules", schedulesJson)
+                put("intervalDays", drug.intervalDays)
+                put("repeatMinutes", drug.repeatMinutes)
+                put("enabled", drug.enabled)
+                put("startDate", drug.startDate)
             })
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_DRUGS, arr.toString()).commit()
+            .edit().putString(KEY_DRUGS, array.toString()).commit()
     }
 
-    /* ===================== 历史记录 ===================== */
+    /* ===================== 服药任务状态 ===================== */
 
-    /**
-     * 一条历史记录
-     *
-     * @param drugId 药品ID
-     * @param drugName 药品名称
-     * @param scheduledTime 设定的提醒时间
-     * @param dateStr 日期 yyyy-MM-dd
-     * @param actualTimeStr 实际操作时间 HH:mm
-     * @param isTaken true=已吃，false=已忽略
-     */
-    data class HistoryRecord(
-        val drugId: Int,
-        val drugName: String,
-        val scheduledTime: ReminderTime,
-        val dateStr: String,
-        val actualTimeStr: String,
-        val isTaken: Boolean
-    )
+    fun markTaken(context: Context, drugId: Int, scheduleKey: Int, dateStr: String = todayString()) =
+        setStatus(context, drugId, scheduleKey, dateStr, HistoryStatus.TAKEN)
 
-    private const val KEY_RECORDS_MIGRATED = "records_migrated_v2"
+    fun markSkipped(context: Context, drugId: Int, scheduleKey: Int, dateStr: String = todayString()) =
+        setStatus(context, drugId, scheduleKey, dateStr, HistoryStatus.SKIPPED)
+
+    fun markMissed(context: Context, drugId: Int, scheduleKey: Int, dateStr: String): Boolean {
+        if (isCompletedOn(context, drugId, scheduleKey, dateStr)) return false
+        setStatus(context, drugId, scheduleKey, dateStr, HistoryStatus.MISSED)
+        return true
+    }
+
+    private fun setStatus(
+        context: Context,
+        drugId: Int,
+        scheduleKey: Int,
+        dateStr: String,
+        status: HistoryStatus
+    ) {
+        val drug = getDrug(context, drugId) ?: return
+        val scheduleIndex = drug.schedules.indexOfFirst { it.scheduleKey == scheduleKey }
+        val schedule = drug.schedules.getOrNull(scheduleIndex) ?: return
+        val actualTime = if (status == HistoryStatus.MISSED) "--:--:--" else currentTimeString()
+        val value = listOf(
+            drugId.toString(), scheduleKey.toString(), dateStr, actualTime,
+            schedule.reminderTimes.joinToString(",") { it.format() }, schedule.displayName(scheduleIndex)
+        ).joinToString("|")
+
+        editRecordSets(context) { taken, skipped, missed ->
+            removeOccurrence(taken, drugId, scheduleKey, dateStr)
+            removeOccurrence(skipped, drugId, scheduleKey, dateStr)
+            removeOccurrence(missed, drugId, scheduleKey, dateStr)
+            when (status) {
+                HistoryStatus.TAKEN -> taken.add(value)
+                HistoryStatus.SKIPPED -> skipped.add(value)
+                HistoryStatus.MISSED -> missed.add(value)
+            }
+        }
+    }
+
+    fun undoCompleted(context: Context, drugId: Int, scheduleKey: Int, dateStr: String = todayString()) {
+        editRecordSets(context) { taken, skipped, missed ->
+            removeOccurrence(taken, drugId, scheduleKey, dateStr)
+            removeOccurrence(skipped, drugId, scheduleKey, dateStr)
+            removeOccurrence(missed, drugId, scheduleKey, dateStr)
+        }
+    }
+
+    fun deleteRecord(context: Context, drugId: Int, scheduleKey: Int, dateStr: String) =
+        undoCompleted(context, drugId, scheduleKey, dateStr)
+
+    fun deleteAllRecordsForDrug(context: Context, drugId: Int) {
+        editRecordSets(context) { taken, skipped, missed ->
+            taken.removeAll { it.startsWith("$drugId|") }
+            skipped.removeAll { it.startsWith("$drugId|") }
+            missed.removeAll { it.startsWith("$drugId|") }
+        }
+    }
+
+    fun isTakenOn(context: Context, drugId: Int, scheduleKey: Int, dateStr: String): Boolean =
+        containsOccurrence(getRecordSet(context, KEY_TAKEN), drugId, scheduleKey, dateStr)
+
+    fun isSkippedOn(context: Context, drugId: Int, scheduleKey: Int, dateStr: String): Boolean =
+        containsOccurrence(getRecordSet(context, KEY_SKIPPED), drugId, scheduleKey, dateStr)
+
+    fun isMissedOn(context: Context, drugId: Int, scheduleKey: Int, dateStr: String): Boolean =
+        containsOccurrence(getRecordSet(context, KEY_MISSED), drugId, scheduleKey, dateStr)
+
+    fun isCompletedOn(context: Context, drugId: Int, scheduleKey: Int, dateStr: String): Boolean =
+        isTakenOn(context, drugId, scheduleKey, dateStr) ||
+            isSkippedOn(context, drugId, scheduleKey, dateStr) ||
+            isMissedOn(context, drugId, scheduleKey, dateStr)
+
+    fun missedCountOn(context: Context, dateStr: String): Int =
+        getRecordSet(context, KEY_MISSED).count { it.split("|").getOrNull(2) == dateStr }
+
+    private fun containsOccurrence(set: Set<String>, drugId: Int, scheduleKey: Int, dateStr: String): Boolean =
+        set.any { it.startsWith(occurrencePrefix(drugId, scheduleKey, dateStr)) }
+
+    private fun removeOccurrence(set: MutableSet<String>, drugId: Int, scheduleKey: Int, dateStr: String) {
+        val prefix = occurrencePrefix(drugId, scheduleKey, dateStr)
+        set.removeAll { it.startsWith(prefix) }
+    }
+
+    private fun occurrencePrefix(drugId: Int, scheduleKey: Int, dateStr: String) =
+        "$drugId|$scheduleKey|$dateStr|"
+
+    /* ===================== 历史迁移与查询 ===================== */
 
     private fun ensureRecordsMigrated(context: Context) {
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (sp.getBoolean(KEY_RECORDS_MIGRATED, false)) return
-        migrateSet(context, KEY_TAKEN)
-        migrateSet(context, KEY_IGNORED)
-        sp.edit().putBoolean(KEY_RECORDS_MIGRATED, true).commit()
+        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (preferences.getBoolean(KEY_RECORDS_MIGRATED, false)) return
+
+        val drugs = getAllDrugs(context).associateBy { it.id }
+        val taken = preferences.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val skipped = preferences.getStringSet(KEY_SKIPPED, emptySet())?.toMutableSet() ?: mutableSetOf()
+
+        fun migrateLegacy(source: Set<String>, target: MutableSet<String>) {
+            source.forEach { legacy ->
+                val parts = legacy.split("|")
+                val drugId = parts.getOrNull(0)?.toIntOrNull() ?: return@forEach
+                val time = ReminderTime.from(parts.getOrNull(1) ?: return@forEach) ?: return@forEach
+                val date = parts.getOrNull(2) ?: return@forEach
+                val actual = parts.getOrNull(3) ?: time.format()
+                val drug = drugs[drugId] ?: return@forEach
+                val index = drug.schedules.indexOfFirst { time in it.reminderTimes }
+                val schedule = drug.schedules.getOrNull(index) ?: return@forEach
+                target.add(listOf(
+                    drugId.toString(), schedule.scheduleKey.toString(), date, actual,
+                    schedule.reminderTimes.joinToString(",") { it.format() }, schedule.displayName(index)
+                ).joinToString("|"))
+            }
+        }
+
+        migrateLegacy(preferences.getStringSet(KEY_LEGACY_TAKEN, emptySet()) ?: emptySet(), taken)
+        migrateLegacy(preferences.getStringSet(KEY_LEGACY_IGNORED, emptySet()) ?: emptySet(), skipped)
+        preferences.edit()
+            .putStringSet(KEY_TAKEN, taken)
+            .putStringSet(KEY_SKIPPED, skipped)
+            .putBoolean(KEY_RECORDS_MIGRATED, true)
+            .commit()
     }
 
-    private fun migrateSet(context: Context, key: String) {
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val set = sp.getStringSet(key, emptySet())?.toMutableSet() ?: return
-        val migrated = set.map { rec ->
-            // 旧格式：drugId|HH:mm|date；新格式：drugId|HH:mm|date|actualTime
-            if (rec.count { it == '|' } == 2) "$rec|${rec.split("|")[1]}" else rec
-        }.toMutableSet()
-        sp.edit().putStringSet(key, migrated).commit()
-    }
-
-    private fun getRecordsSet(context: Context, key: String): Set<String> {
+    private fun getRecordSet(context: Context, key: String): Set<String> {
         ensureRecordsMigrated(context)
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getStringSet(key, emptySet())?.toSet() ?: emptySet()
     }
 
-    private fun editRecords(
+    private fun editRecordSets(
         context: Context,
-        block: (Editor, MutableSet<String>, MutableSet<String>) -> Unit
+        block: (MutableSet<String>, MutableSet<String>, MutableSet<String>) -> Unit
     ) {
         ensureRecordsMigrated(context)
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val taken = sp.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
-        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
-        val editor = sp.edit()
-        block(editor, taken, ignored)
-        editor.putStringSet(KEY_TAKEN, taken)
-            .putStringSet(KEY_IGNORED, ignored)
-            .commit()
-    }
-
-    private fun recordPrefix(drugId: Int, time: ReminderTime, dateStr: String) =
-        "$drugId|${time.format()}|$dateStr|"
-
-    private fun oldRecordExact(drugId: Int, time: ReminderTime, dateStr: String) =
-        "$drugId|${time.format()}|$dateStr"
-
-    private fun matchesRecord(rec: String, drugId: Int, time: ReminderTime, dateStr: String): Boolean {
-        return rec == oldRecordExact(drugId, time, dateStr)
-                || rec.startsWith(recordPrefix(drugId, time, dateStr))
-    }
-
-    private fun removeMatchingRecords(
-        set: MutableSet<String>,
-        drugId: Int,
-        time: ReminderTime,
-        dateStr: String
-    ) {
-        val exact = oldRecordExact(drugId, time, dateStr)
-        val prefix = recordPrefix(drugId, time, dateStr)
-        set.removeAll { it == exact || it.startsWith(prefix) }
-    }
-
-    private fun currentTimeStr(): String {
-        val now = Calendar.getInstance()
-        return String.format(Locale.CHINA, "%02d:%02d:%02d",
-            now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND))
-    }
-
-    /** 标记某药品某时间点今天已吃，同时记录实际操作时间 */
-    fun markTaken(context: Context, drugId: Int, time: ReminderTime) {
-        val dateStr = todayString()
-        editRecords(context) { _, taken, ignored ->
-            removeMatchingRecords(taken, drugId, time, dateStr)
-            removeMatchingRecords(ignored, drugId, time, dateStr)
-            taken.add("$drugId|${time.format()}|$dateStr|${currentTimeStr()}")
-        }
-    }
-
-    /** 标记某药品某时间点今天已忽略（不再提醒，但不算已吃） */
-    fun markIgnored(context: Context, drugId: Int, time: ReminderTime) {
-        val dateStr = todayString()
-        editRecords(context) { _, taken, ignored ->
-            removeMatchingRecords(taken, drugId, time, dateStr)
-            removeMatchingRecords(ignored, drugId, time, dateStr)
-            ignored.add("$drugId|${time.format()}|$dateStr|${currentTimeStr()}")
-        }
-    }
-
-    /** 撤销某药品某时间点今天的完成状态（同时清除 taken 和 ignored） */
-    fun undoCompleted(context: Context, drugId: Int, time: ReminderTime) {
-        val dateStr = todayString()
-        editRecords(context) { _, taken, ignored ->
-            removeMatchingRecords(taken, drugId, time, dateStr)
-            removeMatchingRecords(ignored, drugId, time, dateStr)
-        }
-    }
-
-    /** 删除指定日期某药品某时间点的历史记录（taken + ignored 均清除） */
-    fun deleteRecord(context: Context, drugId: Int, time: ReminderTime, dateStr: String) {
-        editRecords(context) { _, taken, ignored ->
-            removeMatchingRecords(taken, drugId, time, dateStr)
-            removeMatchingRecords(ignored, drugId, time, dateStr)
-        }
-    }
-
-    /** 清空某药品的全部历史记录（taken + ignored） */
-    fun deleteAllRecordsForDrug(context: Context, drugId: Int) {
-        val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val taken = sp.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
-        taken.removeAll { it.startsWith("$drugId|") }
-        val ignored = sp.getStringSet(KEY_IGNORED, emptySet())?.toMutableSet() ?: mutableSetOf()
-        ignored.removeAll { it.startsWith("$drugId|") }
-        sp.edit()
+        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val taken = preferences.getStringSet(KEY_TAKEN, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val skipped = preferences.getStringSet(KEY_SKIPPED, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val missed = preferences.getStringSet(KEY_MISSED, emptySet())?.toMutableSet() ?: mutableSetOf()
+        block(taken, skipped, missed)
+        preferences.edit()
             .putStringSet(KEY_TAKEN, taken)
-            .putStringSet(KEY_IGNORED, ignored)
+            .putStringSet(KEY_SKIPPED, skipped)
+            .putStringSet(KEY_MISSED, missed)
             .commit()
     }
 
-    /** 某药品某时间点今天是否已吃 */
-    fun isTaken(context: Context, drugId: Int, time: ReminderTime): Boolean {
-        val taken = getRecordsSet(context, KEY_TAKEN)
-        return taken.any { matchesRecord(it, drugId, time, todayString()) }
-    }
-
-    /** 某药品某时间点今天是否已忽略 */
-    fun isIgnored(context: Context, drugId: Int, time: ReminderTime): Boolean {
-        val ignored = getRecordsSet(context, KEY_IGNORED)
-        return ignored.any { matchesRecord(it, drugId, time, todayString()) }
-    }
-
-    /** 某药品某时间点今天是否已完成（已吃或已忽略） */
-    fun isCompleted(context: Context, drugId: Int, time: ReminderTime): Boolean {
-        return isTaken(context, drugId, time) || isIgnored(context, drugId, time)
-    }
-
-    /** 某药品某时间点指定日期是否已吃 */
-    fun isTakenOn(context: Context, drugId: Int, time: ReminderTime, dateStr: String): Boolean {
-        val taken = getRecordsSet(context, KEY_TAKEN)
-        return taken.any { matchesRecord(it, drugId, time, dateStr) }
-    }
-
-    /** 某药品某时间点指定日期是否已忽略 */
-    fun isIgnoredOn(context: Context, drugId: Int, time: ReminderTime, dateStr: String): Boolean {
-        val ignored = getRecordsSet(context, KEY_IGNORED)
-        return ignored.any { matchesRecord(it, drugId, time, dateStr) }
-    }
-
-    /** 某药品某时间点指定日期是否已完成（已吃或已忽略） */
-    fun isCompletedOn(context: Context, drugId: Int, time: ReminderTime, dateStr: String): Boolean {
-        return isTakenOn(context, drugId, time, dateStr) || isIgnoredOn(context, drugId, time, dateStr)
-    }
-
-    /** 某药品今天是否所有时间点都已完成（已吃或已忽略） */
-    fun isAllCompleted(context: Context, drug: Drug): Boolean {
-        if (drug.times.isEmpty()) return true
-        return drug.times.all { isCompleted(context, drug.id, it) }
-    }
-
-    /** 某药品今天还有几个时间点未完成 */
-    fun remainingCount(context: Context, drug: Drug): Int {
-        if (drug.times.isEmpty()) return 0
-        return drug.times.count { !isCompleted(context, drug.id, it) }
-    }
-
-    /** 获取所有历史记录，按实际操作时间倒序排列（最新在前） */
     fun getHistoryRecords(context: Context): List<HistoryRecord> {
         val drugs = getAllDrugs(context).associateBy { it.id }
-        val taken = getRecordsSet(context, KEY_TAKEN)
-        val ignored = getRecordsSet(context, KEY_IGNORED)
-        val list = mutableListOf<HistoryRecord>()
-        taken.mapNotNullTo(list) { parseRecord(it, true, drugs) }
-        ignored.mapNotNullTo(list) { parseRecord(it, false, drugs) }
-        return list.sortedByDescending { recordTimestamp(it) }
+        val result = mutableListOf<HistoryRecord>()
+        getRecordSet(context, KEY_TAKEN).mapNotNullTo(result) { parseRecord(it, HistoryStatus.TAKEN, drugs) }
+        getRecordSet(context, KEY_SKIPPED).mapNotNullTo(result) { parseRecord(it, HistoryStatus.SKIPPED, drugs) }
+        getRecordSet(context, KEY_MISSED).mapNotNullTo(result) { parseRecord(it, HistoryStatus.MISSED, drugs) }
+        return result.sortedByDescending(::recordTimestamp)
     }
 
-    private fun parseRecord(str: String, isTaken: Boolean, drugs: Map<Int, Drug>): HistoryRecord? {
-        val parts = str.split("|")
-        if (parts.size < 3) return null
+    private fun parseRecord(
+        value: String,
+        status: HistoryStatus,
+        drugs: Map<Int, Drug>
+    ): HistoryRecord? {
+        val parts = value.split("|")
+        if (parts.size < 5) return null
         val drugId = parts[0].toIntOrNull() ?: return null
-        val scheduledTime = ReminderTime.from(parts[1]) ?: return null
-        val dateStr = parts[2]
-        val actualTimeStr = if (parts.size >= 4) parts[3] else scheduledTime.format()
         val drug = drugs[drugId] ?: return null
-        return HistoryRecord(drugId, drug.name, scheduledTime, dateStr, actualTimeStr, isTaken)
+        return HistoryRecord(
+            drugId = drugId,
+            drugName = drug.name,
+            scheduleKey = parts[1].toIntOrNull() ?: return null,
+            scheduleLabel = parts.getOrNull(5) ?: "一次服药",
+            plannedTimes = parts[4].split(",").mapNotNull { ReminderTime.from(it) },
+            dateStr = parts[2],
+            actualTimeStr = parts[3],
+            status = status
+        )
     }
 
-    private fun recordTimestamp(record: HistoryRecord): Long {
-        return try {
-            val dateParts = record.dateStr.split("-").map { it.toInt() }
-            val timeParts = record.actualTimeStr.split(":").map { it.toInt() }
-            val second = if (timeParts.size >= 3) timeParts[2] else 0
-            Calendar.getInstance().apply {
-                set(dateParts[0], dateParts[1] - 1, dateParts[2],
-                    timeParts[0], timeParts[1], second)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-        } catch (e: Exception) {
-            0L
+    private fun recordTimestamp(record: HistoryRecord): Long = try {
+        val dateParts = record.dateStr.split("-").map(String::toInt)
+        val fallback = record.plannedTimes.maxByOrNull { it.hour * 60 + it.minute } ?: ReminderTime(23, 59)
+        val timeParts = if (record.actualTimeStr.startsWith("--")) {
+            listOf(fallback.hour, fallback.minute, 59)
+        } else {
+            record.actualTimeStr.split(":").map(String::toInt).let {
+                listOf(it[0], it[1], it.getOrElse(2) { 0 })
+            }
         }
+        Calendar.getInstance().apply {
+            set(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], timeParts[2])
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    } catch (_: Exception) {
+        0L
     }
 
-    /* ===================== 工具 ===================== */
+    /* ===================== 跨日核对 ===================== */
 
-    private fun todayString(): String = dateString(Calendar.getInstance())
+    /** 将上次核对日至昨天之间仍未确认的任务记为“已错过”，最多回溯 30 天。 */
+    fun reconcilePastOccurrences(context: Context): Int {
+        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val today = startOfDay(Calendar.getInstance())
+        val yesterday = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -1) }
+        val start = parseDate(preferences.getString(KEY_LAST_RECONCILED_DATE, null))
+            ?: (yesterday.clone() as Calendar)
+        if (start.after(yesterday)) {
+            preferences.edit().putString(KEY_LAST_RECONCILED_DATE, dateString(today)).commit()
+            return 0
+        }
 
-    fun dateString(calendar: Calendar): String =
-        String.format(Locale.CHINA, "%04d-%02d-%02d",
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH) + 1,
-            calendar.get(Calendar.DAY_OF_MONTH))
+        val minimum = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -30) }
+        if (start.before(minimum)) start.timeInMillis = minimum.timeInMillis
+        var added = 0
+        val drugs = getAllDrugs(context).filter { it.enabled }
+        val cursor = start.clone() as Calendar
+        while (!cursor.after(yesterday)) {
+            val date = dateString(cursor)
+            drugs.filter { it.isScheduledOn(date) }.forEach { drug ->
+                drug.schedules.forEach { schedule ->
+                    if (markMissed(context, drug.id, schedule.scheduleKey, date)) added++
+                }
+            }
+            cursor.add(Calendar.DAY_OF_MONTH, 1)
+        }
+        preferences.edit().putString(KEY_LAST_RECONCILED_DATE, dateString(today)).commit()
+        return added
+    }
+
+    private fun parseDate(value: String?): Calendar? = try {
+        if (value == null) null else startOfDay(Calendar.getInstance().apply {
+            time = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).parse(value) ?: Date()
+        })
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun startOfDay(calendar: Calendar): Calendar = calendar.apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    private fun currentTimeString(): String {
+        val now = Calendar.getInstance()
+        return String.format(
+            Locale.CHINA, "%02d:%02d:%02d",
+            now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND)
+        )
+    }
+
+    fun todayString(): String = dateString(Calendar.getInstance())
+
+    fun dateString(calendar: Calendar): String = String.format(
+        Locale.CHINA, "%04d-%02d-%02d",
+        calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH) + 1, calendar.get(Calendar.DAY_OF_MONTH)
+    )
 }

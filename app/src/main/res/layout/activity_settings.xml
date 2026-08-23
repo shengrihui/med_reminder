@@ -42,6 +42,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/bg_input"
+                android:importantForAutofill="no"
                 android:inputType="text"
                 android:maxLength="20"
                 android:paddingHorizontal="14dp"
@@ -49,30 +50,30 @@
                 android:textColorHint="@color/text_hint"
                 android:textSize="20sp" />
 
-            <!-- 提醒时间点 -->
+            <!-- 每日服药安排 -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="提醒时间点"
+                android:text="每日服药安排"
                 android:textColor="@color/text_primary"
                 android:textSize="19sp" />
 
             <LinearLayout
-                android:id="@+id/llTimes"
+                android:id="@+id/llSchedules"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:orientation="vertical" />
 
             <Button
-                android:id="@+id/btnAddTime"
+                android:id="@+id/btnAddSchedule"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:layout_marginTop="10dp"
-                android:contentDescription="添加新的提醒时间点"
-                android:text="+ 添加时间点"
+                android:contentDescription="添加一次服药安排"
+                android:text="+ 添加一次服药"
                 android:textSize="16sp"
                 app:cornerRadius="12dp" />
 

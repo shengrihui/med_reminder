@@ -83,9 +83,12 @@ class ManageActivity : AppCompatActivity() {
                 2 -> "隔天"
                 else -> "每${drug.intervalDays}天"
             }
-            val timesText = drug.times.sortedBy { it.hour * 60 + it.minute }
-                .joinToString("、") { it.format() }
-            item.tvTimes.text = "$intervalText $timesText"
+            val schedulesText = drug.schedules.mapIndexed { index, schedule ->
+                val times = schedule.reminderTimes.sortedBy { it.hour * 60 + it.minute }
+                    .joinToString("、") { it.format() }
+                "${schedule.displayName(index)} $times"
+            }.joinToString("；")
+            item.tvTimes.text = "$intervalText ${drug.schedules.size}次：$schedulesText"
 
             item.swEnabled.isChecked = drug.enabled
             item.swEnabled.setOnCheckedChangeListener { _, isChecked ->
@@ -93,7 +96,7 @@ class ManageActivity : AppCompatActivity() {
                 DrugStore.saveDrug(this, updated)
                 if (isChecked) {
                     if (checkExactAlarmPermission()) {
-                        ReminderManager.scheduleAllDailyAlarms(this, updated)
+                        ReminderManager.scheduleAllAlarms(this, updated)
                     }
                 } else {
                     ReminderManager.cancelAllAlarms(this, drug.id)

@@ -8,8 +8,7 @@ import android.util.Log
 /**
  * 开机自启接收器
  *
- * 手机重启或 App 更新后，所有闹钟会丢失。
- * 监听广播，重启后重新注册所有已开启药品的闹钟。
+ * 手机重启、App 更新或系统时间变化后，核对跨日任务并重建全部闹钟。
  */
 class BootReceiver : BroadcastReceiver() {
 
@@ -23,8 +22,15 @@ class BootReceiver : BroadcastReceiver() {
 
         when (action) {
             Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED -> {
+                DrugStore.reconcilePastOccurrences(context)
+                DrugStore.getAllDrugs(context).forEach {
+                    ReminderManager.cancelAllAlarms(context, it.id)
+                }
                 ReminderManager.scheduleAllEnabledAlarms(context)
+                ReminderManager.catchUpToday(context)
             }
         }
     }

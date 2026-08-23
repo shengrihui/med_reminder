@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivitySettingsBinding
+import com.example.medreminder.databinding.ItemDoseScheduleEditBinding
 import com.example.medreminder.databinding.ItemTimeEditBinding
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -32,8 +33,7 @@ import java.util.Locale
  * - 新建模式：drugId = -1（EXTRA_IS_NEW），用默认配置初始化，保存时才真正创建药品；
  *   未保存直接返回则不会创建任何药品。
  *
- * - 支持多个提醒时间点的增删改（添加时默认当前时间）
- * - 时间点按时间排序显示（不改变存储索引）
+ * - 支持一天多次服药、每次服药多个提醒时间点
  * - 服用频率、重复间隔（步进器）
  */
 class SettingsActivity : AppCompatActivity() {
@@ -43,7 +43,7 @@ class SettingsActivity : AppCompatActivity() {
     private var isNew: Boolean = false
     private var drug: Drug? = null
 
-    private var times = mutableListOf<ReminderTime>()
+    private var schedules = mutableListOf<DoseSchedule>()
     private var intervalDays = Drug.DEFAULT_INTERVAL_DAYS
     private var repeatMinutes = Drug.DEFAULT_REPEAT_MINUTES
     private var startDate = DrugStore.dateString(Calendar.getInstance())
@@ -90,7 +90,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         setupListeners()
-        renderTimes()
+        renderSchedules()
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -102,7 +102,7 @@ class SettingsActivity : AppCompatActivity() {
 
     /** 新建模式：用默认值初始化 */
     private fun initDefaults() {
-        times = mutableListOf(ReminderTime.DEFAULT)
+        schedules = mutableListOf(DoseSchedule(1, listOf(ReminderTime.DEFAULT)))
         intervalDays = Drug.DEFAULT_INTERVAL_DAYS
         repeatMinutes = Drug.DEFAULT_REPEAT_MINUTES
         startDate = DrugStore.dateString(Calendar.getInstance())
@@ -116,7 +116,7 @@ class SettingsActivity : AppCompatActivity() {
     /** 编辑模式：加载已有药品配置 */
     private fun loadConfig() {
         val d = drug ?: return
-        times = d.times.toMutableList()
+        schedules = d.schedules.toMutableList()
         intervalDays = d.intervalDays
         repeatMinutes = d.repeatMinutes
         startDate = d.startDate
@@ -129,19 +129,11 @@ class SettingsActivity : AppCompatActivity() {
     /* ===================== 监听 ===================== */
 
     private fun setupListeners() {
-        binding.btnAddTime.setOnClickListener {
-            // 默认用当前时间的下一分钟（避免和已有的同一小时:分钟重复）
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.MINUTE, 1)
-            val newTime = ReminderTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
-            // 检查时间点是否重复（同 hour:minute）
-            if (times.any { it.hour == newTime.hour && it.minute == newTime.minute }) {
-                Toast.makeText(this, "已存在相同的时间点 ${newTime.format()}，请选其他时间", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            times.add(newTime)
-            renderTimes()
-            Toast.makeText(this, "已添加 ${newTime.format()}，请点'保存设置'生效", Toast.LENGTH_SHORT).show()
+        binding.btnAddSchedule.setOnClickListener {
+            val nextKey = newScheduleKey()
+            schedules.add(DoseSchedule(nextKey, listOf(nextAvailableTime())))
+            renderSchedules()
+            Toast.makeText(this, "已添加第${schedules.size}次服药", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnIntervalMinus.setOnClickListener {
@@ -169,8 +161,8 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "请输入药品名称", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (times.isEmpty()) {
-                Toast.makeText(this, "至少需要一个提醒时间点", Toast.LENGTH_SHORT).show()
+            if (schedules.isEmpty() || schedules.any { it.reminderTimes.isEmpty() }) {
+                Toast.makeText(this, "至少需要一次服药，并为每次服药设置提醒时间", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
@@ -181,7 +173,7 @@ class SettingsActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 val created = DrugStore.createDrug(
-                    this, name, times.toList(), intervalDays, repeatMinutes,
+                    this, name, schedules.toList(), intervalDays, repeatMinutes,
                     if (intervalDays == 1) DrugStore.dateString(Calendar.getInstance()) else startDate
                 )
                 if (created == null) {
@@ -190,7 +182,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 // 注册闹钟；权限不足时仍然保存药品，并提示用户去授权
                 if (checkExactAlarmPermission()) {
-                    ReminderManager.scheduleAllDailyAlarms(this, created)
+                    ReminderManager.scheduleAllAlarms(this, created)
                 }
                 Toast.makeText(this, "已添加药品「$name」", Toast.LENGTH_SHORT).show()
                 finish()
@@ -203,17 +195,18 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 val updated = d.copy(
                     name = name,
-                    times = times.toList(),
+                    schedules = schedules.toList(),
                     intervalDays = intervalDays,
                     repeatMinutes = repeatMinutes,
                     startDate = if (intervalDays == 1) DrugStore.dateString(Calendar.getInstance()) else startDate
                 )
+                // 必须在写入新配置前取消旧配置的闹钟，才能覆盖被删除的时段和时间点。
+                ReminderManager.cancelAllAlarms(this, d.id)
                 DrugStore.saveDrug(this, updated)
                 // 重新注册闹钟；权限不足时仍然保存，并提示用户去授权
-                ReminderManager.cancelAllAlarms(this, d.id)
                 if (updated.enabled) {
                     if (checkExactAlarmPermission()) {
-                        ReminderManager.scheduleAllDailyAlarms(this, updated)
+                        ReminderManager.scheduleAllAlarms(this, updated)
                     }
                 }
                 Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
@@ -237,50 +230,107 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /* ===================== 时间点列表（按时间排序显示） ===================== */
+    /* ===================== 服药安排与提醒时间 ===================== */
 
-    private fun renderTimes() {
-        val container = binding.llTimes
+    private fun renderSchedules() {
+        val container = binding.llSchedules
         container.removeAllViews()
 
-        // 按时间排序索引，但不改变 times 列表的实际顺序
-        val sortedIndices = times.indices.sortedBy { times[it].hour * 60 + times[it].minute }
+        schedules.forEachIndexed { scheduleIndex, schedule ->
+            val scheduleBinding = ItemDoseScheduleEditBinding.inflate(
+                LayoutInflater.from(this), container, false
+            )
+            val scheduleName = schedule.displayName(scheduleIndex)
+            scheduleBinding.tvScheduleName.text = scheduleName
+            ViewCompat.setAccessibilityHeading(scheduleBinding.tvScheduleName, true)
+            scheduleBinding.btnRemoveSchedule.contentDescription = "删除$scheduleName"
+            scheduleBinding.btnRemoveSchedule.setOnClickListener {
+                if (schedules.size <= 1) {
+                    Toast.makeText(this, "至少保留一次服药安排", Toast.LENGTH_SHORT).show()
+                } else {
+                    schedules.removeAll { it.scheduleKey == schedule.scheduleKey }
+                    renderSchedules()
+                }
+            }
 
-        for (index in sortedIndices) {
-            val time = times[index]
-            val row = ItemTimeEditBinding.inflate(LayoutInflater.from(this), container, false)
-            row.btnPickTime.text = time.format()
-            row.btnPickTime.contentDescription = "时间点 ${time.format()}，点击修改"
-
-            row.btnPickTime.setOnClickListener {
-                TimePickerDialog(this, { _, h, m ->
-                    // 检查是否与其他时间点重复（排除自己）
-                    val duplicate = times.indices.any { it != index && times[it].hour == h && times[it].minute == m }
-                    if (duplicate) {
-                        Toast.makeText(this, "已存在相同的时间点 ${"%02d:%02d".format(h, m)}", Toast.LENGTH_SHORT).show()
-                        return@TimePickerDialog
+            schedule.reminderTimes.sortedBy { it.hour * 60 + it.minute }.forEach { time ->
+                val row = ItemTimeEditBinding.inflate(
+                    LayoutInflater.from(this), scheduleBinding.llReminderTimes, false
+                )
+                row.btnPickTime.text = time.format()
+                row.btnPickTime.contentDescription = "${scheduleName}提醒时间${spokenTime(time)}，点击修改"
+                row.btnPickTime.setOnClickListener {
+                    TimePickerDialog(this, { _, hour, minute ->
+                        val replacement = ReminderTime(hour, minute)
+                        val duplicate = schedules.any { candidate ->
+                            candidate.reminderTimes.any { existing ->
+                                existing == replacement &&
+                                    !(candidate.scheduleKey == schedule.scheduleKey && existing == time)
+                            }
+                        }
+                        if (duplicate) {
+                            Toast.makeText(this, "已存在相同提醒时间 ${replacement.format()}", Toast.LENGTH_SHORT).show()
+                            return@TimePickerDialog
+                        }
+                        updateSchedule(schedule.scheduleKey) { current ->
+                            current.copy(reminderTimes = current.reminderTimes.map {
+                                if (it == time) replacement else it
+                            })
+                        }
+                        renderSchedules()
+                    }, time.hour, time.minute, true).show()
+                }
+                row.btnRemoveTime.contentDescription = "删除${scheduleName}的${spokenTime(time)}提醒"
+                row.btnRemoveTime.setOnClickListener {
+                    if (schedule.reminderTimes.size <= 1) {
+                        Toast.makeText(this, "每次服药至少保留一个提醒时间", Toast.LENGTH_SHORT).show()
+                    } else {
+                        updateSchedule(schedule.scheduleKey) { current ->
+                            current.copy(reminderTimes = current.reminderTimes.filterNot { it == time })
+                        }
+                        renderSchedules()
                     }
-                    times[index] = ReminderTime(h, m)
-                    renderTimes()
-                }, time.hour, time.minute, true).show()
+                }
+                scheduleBinding.llReminderTimes.addView(row.root)
             }
 
-            row.btnRemoveTime.setOnClickListener {
-                if (times.size <= 1) {
-                    Toast.makeText(this, "至少保留一个时间点", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
+            scheduleBinding.btnAddReminderTime.contentDescription = "为${scheduleName}添加提醒时间"
+            scheduleBinding.btnAddReminderTime.setOnClickListener {
+                val newTime = nextAvailableTime()
+                updateSchedule(schedule.scheduleKey) { current ->
+                    current.copy(reminderTimes = current.reminderTimes + newTime)
                 }
-                // 重新查找当前时间点在 times 中的实际索引
-                val actualIndex = times.indexOf(time)
-                if (actualIndex >= 0) {
-                    times.removeAt(actualIndex)
-                    renderTimes()
-                }
+                renderSchedules()
             }
-
-            container.addView(row.root)
+            container.addView(scheduleBinding.root)
         }
     }
+
+    private fun updateSchedule(scheduleKey: Int, transform: (DoseSchedule) -> DoseSchedule) {
+        val index = schedules.indexOfFirst { it.scheduleKey == scheduleKey }
+        if (index >= 0) schedules[index] = transform(schedules[index])
+    }
+
+    private fun nextAvailableTime(): ReminderTime {
+        val used = schedules.flatMap { it.reminderTimes }.toSet()
+        val calendar = Calendar.getInstance().apply { add(Calendar.MINUTE, 1) }
+        repeat(24 * 60) {
+            val candidate = ReminderTime(calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))
+            if (candidate !in used) return candidate
+            calendar.add(Calendar.MINUTE, 1)
+        }
+        return ReminderTime.DEFAULT
+    }
+
+    /** 不复用已删除安排的内部键，避免新安排与旧历史记录串联。 */
+    private fun newScheduleKey(): Int {
+        val used = schedules.map { it.scheduleKey }.toSet()
+        var candidate = (System.currentTimeMillis() and 0x7fffffff).toInt().coerceAtLeast(1)
+        while (candidate in used) candidate = if (candidate == Int.MAX_VALUE) 1 else candidate + 1
+        return candidate
+    }
+
+    private fun spokenTime(time: ReminderTime): String = "${time.hour}点${time.minute}分"
 
     /* ===================== 权限 ===================== */
 

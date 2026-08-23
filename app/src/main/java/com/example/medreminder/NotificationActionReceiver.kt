@@ -4,59 +4,42 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 
-/**
- * 通知按钮处理
- * - "已用药"：标记该时间点已用，取消通知和重复提醒
- * - "稍后提醒"：取消当前通知，等重复闹钟自动触发
- */
+/** 处理通知中的“已用药”和“稍后提醒”。 */
 class NotificationActionReceiver : BroadcastReceiver() {
 
     companion object {
-        private const val TAG = "NotiActionReceiver"
         const val ACTION_TAKEN = "com.example.medreminder.ACTION_TAKEN"
         const val ACTION_LATER = "com.example.medreminder.ACTION_LATER"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val drugId = intent.getIntExtra(ReminderManager.EXTRA_DRUG_ID, -1)
-        val hour = intent.getIntExtra(ReminderManager.EXTRA_HOUR, -1)
-        val minute = intent.getIntExtra(ReminderManager.EXTRA_MINUTE, -1)
-        val time = ReminderTime(hour, minute)
-        if (drugId < 0 || hour < 0 || minute < 0) return
+        val scheduleKey = intent.getIntExtra(ReminderManager.EXTRA_SCHEDULE_KEY, -1)
+        val dateStr = intent.getStringExtra(ReminderManager.EXTRA_DATE) ?: return
+        val time = ReminderTime(
+            intent.getIntExtra(ReminderManager.EXTRA_HOUR, -1),
+            intent.getIntExtra(ReminderManager.EXTRA_MINUTE, -1)
+        )
+        if (drugId < 0 || scheduleKey < 0 || time.hour !in 0..23 || time.minute !in 0..59) return
+
+        val drug = DrugStore.getDrug(context, drugId) ?: return
+        val schedule = drug.schedules.find { it.scheduleKey == scheduleKey } ?: return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(ReminderManager.notificationId(drugId, scheduleKey, dateStr))
 
         when (intent.action) {
-            ACTION_TAKEN -> handleTaken(context, drugId, time)
-            ACTION_LATER -> handleLater(context, drugId, time)
-        }
-    }
-
-    private fun handleTaken(context: Context, drugId: Int, time: ReminderTime) {
-        Log.d(TAG, "已用药, drugId=$drugId, time=${time.format()}")
-        val drug = DrugStore.getDrug(context, drugId) ?: return
-        if (!drug.times.any { it.hour == time.hour && it.minute == time.minute }) return
-
-        DrugStore.markTaken(context, drugId, time)
-
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.cancel(ReminderManager.notificationId(drugId, time))
-
-        ReminderManager.cancelRepeatAlarm(context, drugId, time)
-        ReminderManager.scheduleDailyAlarm(context, drug, time)
-    }
-
-    private fun handleLater(context: Context, drugId: Int, time: ReminderTime) {
-        Log.d(TAG, "稍后提醒, drugId=$drugId, time=${time.format()}")
-        val drug = DrugStore.getDrug(context, drugId) ?: return
-        if (!drug.times.any { it.hour == time.hour && it.minute == time.minute }) return
-
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.cancel(ReminderManager.notificationId(drugId, time))
-
-        // 稍后提醒：重新注册一次重复闹钟
-        if (drug.repeatMinutes > 0) {
-            ReminderManager.scheduleRepeatAlarm(context, drug, time)
+            ACTION_TAKEN -> {
+                DrugStore.markTaken(context, drugId, scheduleKey, dateStr)
+                ReminderManager.cancelOccurrenceAlarms(context, drugId, scheduleKey, dateStr)
+            }
+            ACTION_LATER -> {
+                if (dateStr == DrugStore.todayString() &&
+                    !DrugStore.isCompletedOn(context, drugId, scheduleKey, dateStr)
+                ) {
+                    ReminderManager.scheduleRepeatAlarm(context, drug, schedule, dateStr, time)
+                }
+            }
         }
     }
 }

@@ -1,9 +1,9 @@
 package com.example.medreminder
 
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 private fun todayDateString(): String =
     String.format(Locale.CHINA, "%04d-%02d-%02d",
@@ -19,7 +19,7 @@ private fun todayDateString(): String =
  */
 data class ReminderTime(val hour: Int, val minute: Int) {
     /** 格式化为 HH:mm */
-    fun format(): String = String.format("%02d:%02d", hour, minute)
+    fun format(): String = String.format(Locale.CHINA, "%02d:%02d", hour, minute)
 
     /** 转成 JSON 字符串 "HH:mm" */
     fun toJson(): String = format()
@@ -28,7 +28,9 @@ data class ReminderTime(val hour: Int, val minute: Int) {
         fun from(str: String): ReminderTime? {
             return try {
                 val parts = str.split(":")
-                ReminderTime(parts[0].toInt(), parts[1].toInt())
+                val hour = parts[0].toInt()
+                val minute = parts[1].toInt()
+                if (hour !in 0..23 || minute !in 0..59) null else ReminderTime(hour, minute)
             } catch (e: Exception) {
                 null
             }
@@ -39,11 +41,25 @@ data class ReminderTime(val hour: Int, val minute: Int) {
 }
 
 /**
+ * 一天中的一次服药安排。
+ *
+ * scheduleKey 是仅用于持久化、闹钟和历史记录关联的稳定键；界面展示“第 N 次服药”，
+ * 不把内部键暴露给用户。一次服药可以配置多个提醒时间，任一时间确认服药后，
+ * 该次服药剩余的提醒都会停止。
+ */
+data class DoseSchedule(
+    val scheduleKey: Int,
+    val reminderTimes: List<ReminderTime>
+) {
+    fun displayName(position: Int): String = "第${position + 1}次服药"
+}
+
+/**
  * 药品数据类
  *
  * @param id 唯一ID
  * @param name 药品名称
- * @param times 提醒时间点列表（1~N个）
+ * @param schedules 每日服药安排；每次服药可有多个提醒时间点
  * @param intervalDays 服用频率（1=每天，2=隔天...）
  * @param repeatMinutes 未确认时重复提醒间隔（分钟）
  * @param enabled 是否开启提醒
@@ -52,7 +68,7 @@ data class ReminderTime(val hour: Int, val minute: Int) {
 data class Drug(
     val id: Int,
     val name: String,
-    val times: List<ReminderTime>,
+    val schedules: List<DoseSchedule>,
     val intervalDays: Int,
     val repeatMinutes: Int,
     val enabled: Boolean,
@@ -61,23 +77,12 @@ data class Drug(
     /** 判断指定日期是否在该药品的服用计划内 */
     fun isScheduledOn(dateStr: String): Boolean {
         if (intervalDays <= 1) return true
-        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
-        val start = Calendar.getInstance().apply {
-            time = parser.parse(startDate) ?: Date()
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+        return try {
+            val diffDays = ChronoUnit.DAYS.between(LocalDate.parse(startDate), LocalDate.parse(dateStr))
+            diffDays >= 0 && diffDays % intervalDays == 0L
+        } catch (_: Exception) {
+            false
         }
-        val target = Calendar.getInstance().apply {
-            time = parser.parse(dateStr) ?: Date()
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val diffDays = ((target.timeInMillis - start.timeInMillis) / (1000 * 60 * 60 * 24)).toInt()
-        return diffDays >= 0 && diffDays % intervalDays == 0
     }
 
     companion object {
@@ -88,7 +93,7 @@ data class Drug(
         fun createDefault(id: Int, name: String = DEFAULT_NAME) = Drug(
             id = id,
             name = name,
-            times = listOf(ReminderTime.DEFAULT),
+            schedules = listOf(DoseSchedule(1, listOf(ReminderTime.DEFAULT))),
             intervalDays = DEFAULT_INTERVAL_DAYS,
             repeatMinutes = DEFAULT_REPEAT_MINUTES,
             enabled = true,

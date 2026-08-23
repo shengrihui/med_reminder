@@ -103,10 +103,16 @@ class HistoryActivity : AppCompatActivity() {
                 setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.text_primary))
                 textSize = 18f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
+                ViewCompat.setAccessibilityHeading(this, true)
             }
             headerRow.addView(header, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             val btnClear = TextView(this).apply {
                 text = "清空"
+                contentDescription = "清空${drugName}的全部历史记录"
+                isFocusable = true
+                minHeight = (48 * resources.displayMetrics.density).toInt()
+                minWidth = (48 * resources.displayMetrics.density).toInt()
+                gravity = Gravity.CENTER
                 setTextColor(ContextCompat.getColor(this@HistoryActivity, R.color.text_hint))
                 textSize = 17f
                 setPadding(32, 6, 4, 6)
@@ -117,6 +123,9 @@ class HistoryActivity : AppCompatActivity() {
                         .setPositiveButton("清空") { _, _ ->
                             DrugStore.deleteAllRecordsForDrug(this@HistoryActivity, drugId)
                             renderHistory()
+                            binding.root.post {
+                                binding.root.announceForAccessibility("已清空${drugName}的全部历史记录")
+                            }
                             Toast.makeText(this@HistoryActivity, "已清空\"$drugName\"的全部记录", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("取消", null)
@@ -128,7 +137,11 @@ class HistoryActivity : AppCompatActivity() {
 
             for (entry in entries) {
                 val row = ItemHistoryRecordBinding.inflate(LayoutInflater.from(this), container, false)
-                val displayTime = entry.actualTimeStr.take(5)
+                val displayTime = if (entry.status == DrugStore.HistoryStatus.MISSED) {
+                    "未记录"
+                } else {
+                    entry.actualTimeStr.take(5)
+                }
 
                 val cal = Calendar.getInstance().apply {
                     val parsed = dateParser.parse(entry.dateStr)
@@ -138,32 +151,61 @@ class HistoryActivity : AppCompatActivity() {
                 val dateLabel = if (entry.dateStr == todayStr) "$monthDay 今天" else monthDay
 
                 row.tvDateTime.text = displayTime
-                row.tvScheduled.text = "$dateLabel  计划${entry.scheduledTime.format()}"
+                val planned = entry.plannedTimes.sortedBy { it.hour * 60 + it.minute }
+                    .joinToString("、") { it.format() }
+                row.tvScheduled.text = "$dateLabel  ${entry.scheduleLabel}  提醒$planned"
 
-                if (entry.isTaken) {
-                    row.tvStatus.text = "已吃"
-                    row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_taken))
-                    row.dotStatus.setBackgroundResource(R.drawable.dot_taken)
-                } else {
-                    row.tvStatus.text = "已忽略"
-                    row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_ignored))
-                    row.dotStatus.setBackgroundResource(R.drawable.dot_ignored)
+                when (entry.status) {
+                    DrugStore.HistoryStatus.TAKEN -> {
+                        row.tvStatus.text = "已用药"
+                        row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_taken))
+                        row.dotStatus.setBackgroundResource(R.drawable.dot_taken)
+                    }
+                    DrugStore.HistoryStatus.SKIPPED -> {
+                        row.tvStatus.text = "已跳过"
+                        row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_ignored))
+                        row.dotStatus.setBackgroundResource(R.drawable.dot_ignored)
+                    }
+                    DrugStore.HistoryStatus.MISSED -> {
+                        row.tvStatus.text = "已错过"
+                        row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_not_taken))
+                        row.dotStatus.setBackgroundResource(R.drawable.dot_missed)
+                    }
                 }
+
+                val spokenPlanned = entry.plannedTimes.sortedBy { it.hour * 60 + it.minute }
+                    .joinToString("，") { "${it.hour}点${it.minute}分" }
+                val spokenActual = if (entry.status == DrugStore.HistoryStatus.MISSED) {
+                    "没有确认时间"
+                } else {
+                    val parts = entry.actualTimeStr.split(":")
+                    "实际${parts.getOrNull(0)?.toIntOrNull() ?: 0}点${parts.getOrNull(1)?.toIntOrNull() ?: 0}分"
+                }
+                row.root.isFocusable = true
+                ViewCompat.setScreenReaderFocusable(row.root, true)
+                row.root.contentDescription =
+                    "${entry.drugName}，$dateLabel，${entry.scheduleLabel}，计划提醒$spokenPlanned，$spokenActual，${row.tvStatus.text}"
+                row.btnDelete.contentDescription =
+                    "删除${entry.drugName}，$dateLabel，${entry.scheduleLabel}的记录"
 
                 row.btnDelete.setOnClickListener {
                     AlertDialog.Builder(this@HistoryActivity)
                         .setTitle("删除记录")
-                        .setMessage("确定要删除 ${entry.drugName} ${dateLabel} ${displayTime} 的记录吗？")
+                        .setMessage("确定要删除 ${entry.drugName} ${dateLabel} ${entry.scheduleLabel} 的记录吗？")
                         .setPositiveButton("删除") { _, _ ->
-                            DrugStore.deleteRecord(this@HistoryActivity, entry.drugId, entry.scheduledTime, entry.dateStr)
+                            DrugStore.deleteRecord(this@HistoryActivity, entry.drugId, entry.scheduleKey, entry.dateStr)
                             renderHistory()
+                            binding.root.post {
+                                binding.root.announceForAccessibility(
+                                    "已删除${entry.drugName}${dateLabel}${entry.scheduleLabel}的记录"
+                                )
+                            }
                             Toast.makeText(this@HistoryActivity, "已删除", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("取消", null)
                         .show()
                 }
 
-                row.root.contentDescription = "${entry.drugName} $dateLabel $displayTime ${row.tvStatus.text}"
                 container.addView(row.root)
             }
         }
@@ -185,7 +227,10 @@ class HistoryActivity : AppCompatActivity() {
     private fun recordTimestamp(record: DrugStore.HistoryRecord): Long {
         return try {
             val dateParts = record.dateStr.split("-").map { it.toInt() }
-            val timeParts = record.actualTimeStr.split(":").map { it.toInt() }
+            val fallback = record.plannedTimes.maxByOrNull { it.hour * 60 + it.minute } ?: ReminderTime(23, 59)
+            val timeParts = if (record.actualTimeStr.startsWith("--")) {
+                listOf(fallback.hour, fallback.minute, 59)
+            } else record.actualTimeStr.split(":").map { it.toInt() }
             val second = if (timeParts.size >= 3) timeParts[2] else 0
             Calendar.getInstance().apply {
                 set(dateParts[0], dateParts[1] - 1, dateParts[2],

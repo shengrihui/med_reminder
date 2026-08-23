@@ -43,7 +43,7 @@
                 tools:text="每天 08:00、20:00" />
         </LinearLayout>
 
-        <Switch
+        <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/swEnabled"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
