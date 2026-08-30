@@ -54,6 +54,13 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".SnoozeActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.MedReminder.Dialog" />
+
         <!-- 闹钟响铃接收器 -->
         <receiver
             android:name=".AlarmReceiver"

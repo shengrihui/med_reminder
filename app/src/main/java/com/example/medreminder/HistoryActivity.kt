@@ -157,7 +157,7 @@ class HistoryActivity : AppCompatActivity() {
 
                 when (entry.status) {
                     DrugStore.HistoryStatus.TAKEN -> {
-                        row.tvStatus.text = "已用药"
+                        row.tvStatus.text = "已服用"
                         row.tvStatus.setTextColor(ContextCompat.getColor(this, R.color.status_taken))
                         row.dotStatus.setBackgroundResource(R.drawable.dot_taken)
                     }

@@ -31,10 +31,10 @@ jobs:
           cmdline-tools-version: 11076708
           packages: ''
 
-      - name: Install Android SDK Platform 36 and Build Tools
+      - name: Install Android SDK Platform 36.1 and Build Tools
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          sdkmanager "platforms;android-36.1" "build-tools;36.0.0" "platform-tools"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -54,13 +54,13 @@ jobs:
           body: |
             # MedReminder ${{ github.ref_name }}
 
-            ### v0.6.0 更新内容
-            - 支持为每天的多次服药分别设置多个提醒时间点
-            - 某次服药确认后，自动停止该次剩余时间点的提醒
-            - 重新开机后补发当天关机期间错过的服药提醒
-            - 跨天后自动结束昨天未确认的持续提醒，并记录为已错过
-            - 改进历史记录页面的无障碍朗读与操作体验
-            - 自动迁移旧版数据，保留已有药品和服药历史
+            ### v0.7.0 更新内容
+            - 每个固定提醒使用独立的后续提醒链，避免多个提醒互相覆盖
+            - “稍后提醒”可选10分钟、30分钟、1小时或自定义时长
+            - “已服用”会完成当前这次服药，并取消该次剩余的所有闹钟和通知
+            - 服药安排可自定义为“早餐后”“睡前”等名称
+            - 精简首页读屏内容，并增加通知与精确提醒未开启时的显眼提示
+            - 使用新的高重要性通知渠道，改善声音、振动和横幅提示
 
             ### 系统要求
             - Android 8.0 (API 26) 及以上

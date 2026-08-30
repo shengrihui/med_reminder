@@ -1,6 +1,7 @@
 package com.example.medreminder
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,5 +33,14 @@ class DrugScheduleTest {
         assertTrue(ReminderTime.from("23:59") != null)
         assertTrue(ReminderTime.from("24:00") == null)
         assertTrue(ReminderTime.from("12:60") == null)
+    }
+
+    @Test
+    fun scheduleUsesCustomNameOrFallsBackToPosition() {
+        assertEquals("第2次服药", DoseSchedule(9, listOf(ReminderTime(8, 0))).displayName(1))
+        assertEquals(
+            "早餐后",
+            DoseSchedule(9, listOf(ReminderTime(8, 0)), customName = "  早餐后  ").displayName(1)
+        )
     }
 }

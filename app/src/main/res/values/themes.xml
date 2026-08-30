@@ -7,6 +7,8 @@
 
     <style name="Theme.MedReminder" parent="Base.Theme.MedReminder" />
 
+    <style name="Theme.MedReminder.Dialog" parent="Theme.Material3.DayNight.Dialog.Alert" />
+
     <!-- Toolbar 大标题样式 -->
     <style name="ToolbarTitleText" parent="TextAppearance.Widget.AppCompat.Toolbar.Title">
         <item name="android:textSize">28sp</item>

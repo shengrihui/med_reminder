@@ -2,7 +2,6 @@ package com.example.medreminder
 
 import android.Manifest
 import android.app.AlarmManager
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -18,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.medreminder.databinding.ActivityMainBinding
@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
         ReminderManager.scheduleAllEnabledAlarms(this)
         binding.btnHistory.setOnClickListener { openHistory() }
         binding.btnMissedSummary.setOnClickListener { openHistory() }
+        binding.btnReminderStatus.setOnClickListener { openMissingReminderSetting() }
         binding.btnManageBottom.setOnClickListener {
             startActivity(Intent(this, ManageActivity::class.java))
         }
@@ -69,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         DrugStore.reconcilePastOccurrences(this)
+        renderReminderStatus()
         renderDrugList()
     }
 
@@ -121,6 +123,17 @@ class MainActivity : AppCompatActivity() {
                 else -> formatDateLabel(occurrence.dateStr, today)
             }
             row.tvTime.text = "$label  $timesText"
+            row.tvDate.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            row.tvTime.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            ViewCompat.setScreenReaderFocusable(row.root, true)
+            row.root.contentDescription = buildString {
+                append(row.tvDate.text)
+                append("，")
+                append(label)
+                append("，提醒时间")
+                append(schedule.reminderTimes.sortedBy { it.hour * 60 + it.minute }
+                    .joinToString("，") { spokenTime(it) })
+            }
 
             val actionable = occurrence.dateStr == today && index == 0
             if (!actionable) {
@@ -128,19 +141,23 @@ class MainActivity : AppCompatActivity() {
                 row.btnIgnore.visibility = View.GONE
                 row.root.alpha = 0.7f
             } else {
-                row.btnTaken.contentDescription = "${drug.name}$label，标记已用药"
-                row.btnIgnore.contentDescription = "${drug.name}$label，跳过此次服药"
+                row.btnTaken.contentDescription = "已服用，$label"
+                row.btnIgnore.contentDescription = "跳过，$label"
                 row.btnTaken.setOnClickListener {
                     DrugStore.markTaken(this, drug.id, schedule.scheduleKey, occurrence.dateStr)
                     clearOccurrence(drug.id, schedule.scheduleKey, occurrence.dateStr)
                     renderDrugList()
-                    Toast.makeText(this, "${drug.name}$label：已标记用药", Toast.LENGTH_SHORT).show()
+                    val message = "已完成${drug.name}$label"
+                    binding.root.post { binding.root.announceForAccessibility(message) }
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                 }
                 row.btnIgnore.setOnClickListener {
                     DrugStore.markSkipped(this, drug.id, schedule.scheduleKey, occurrence.dateStr)
                     clearOccurrence(drug.id, schedule.scheduleKey, occurrence.dateStr)
                     renderDrugList()
-                    Toast.makeText(this, "${drug.name}$label：已跳过", Toast.LENGTH_SHORT).show()
+                    val message = "已跳过${drug.name}$label"
+                    binding.root.post { binding.root.announceForAccessibility(message) }
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                 }
             }
             card.llTimes.addView(row.root)
@@ -149,8 +166,44 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearOccurrence(drugId: Int, scheduleKey: Int, dateStr: String) {
         ReminderManager.cancelOccurrenceAlarms(this, drugId, scheduleKey, dateStr)
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(ReminderManager.notificationId(drugId, scheduleKey, dateStr))
+        ReminderManager.cancelOccurrenceNotifications(this, drugId, scheduleKey, dateStr)
+    }
+
+    private fun spokenTime(time: ReminderTime): String = when {
+        time.minute == 0 -> "${time.hour}点"
+        else -> "${time.hour}点${time.minute}分"
+    }
+
+    private fun renderReminderStatus() {
+        val missing = mutableListOf<String>()
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            missing.add("通知未开启")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) missing.add("精确提醒未开启")
+        }
+        binding.btnReminderStatus.visibility = if (missing.isEmpty()) View.GONE else View.VISIBLE
+        if (missing.isNotEmpty()) {
+            binding.btnReminderStatus.text = missing.joinToString("·") + "，点击处理"
+        }
+    }
+
+    private fun openMissingReminderSetting() {
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            })
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:$packageName")
+                })
+            }
+        }
     }
 
     /** 今天已经超时但未确认的任务仍保留；昨天的任务由历史页承接。 */

@@ -57,7 +57,8 @@ object DrugStore {
                 val scheduleObj = schedulesJson.getJSONObject(index)
                 DoseSchedule(
                     scheduleKey = scheduleObj.optInt("scheduleKey", index + 1),
-                    reminderTimes = parseTimes(scheduleObj.getJSONArray("reminderTimes"))
+                    reminderTimes = parseTimes(scheduleObj.getJSONArray("reminderTimes")),
+                    customName = scheduleObj.optString("customName", "")
                 )
             }.filter { it.reminderTimes.isNotEmpty() }
         } else {
@@ -138,6 +139,7 @@ object DrugStore {
             drug.schedules.forEach { schedule ->
                 schedulesJson.put(JSONObject().apply {
                     put("scheduleKey", schedule.scheduleKey)
+                    put("customName", schedule.customName.trim())
                     put("reminderTimes", JSONArray().apply {
                         schedule.reminderTimes.forEach { put(it.toJson()) }
                     })

@@ -44,14 +44,16 @@ data class ReminderTime(val hour: Int, val minute: Int) {
  * 一天中的一次服药安排。
  *
  * scheduleKey 是仅用于持久化、闹钟和历史记录关联的稳定键；界面展示“第 N 次服药”，
- * 不把内部键暴露给用户。一次服药可以配置多个提醒时间，任一时间确认服药后，
+ * 也可通过 customName 改成“早餐后”等名称。一次服药可以配置多个提醒时间，任一时间确认服药后，
  * 该次服药剩余的提醒都会停止。
  */
 data class DoseSchedule(
     val scheduleKey: Int,
-    val reminderTimes: List<ReminderTime>
+    val reminderTimes: List<ReminderTime>,
+    val customName: String = ""
 ) {
-    fun displayName(position: Int): String = "第${position + 1}次服药"
+    fun displayName(position: Int): String =
+        customName.trim().ifEmpty { "第${position + 1}次服药" }
 }
 
 /**

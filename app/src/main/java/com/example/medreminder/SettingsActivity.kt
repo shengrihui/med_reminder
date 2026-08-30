@@ -17,6 +17,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.doAfterTextChanged
 import com.example.medreminder.databinding.ActivitySettingsBinding
 import com.example.medreminder.databinding.ItemDoseScheduleEditBinding
 import com.example.medreminder.databinding.ItemTimeEditBinding
@@ -243,6 +244,14 @@ class SettingsActivity : AppCompatActivity() {
             val scheduleName = schedule.displayName(scheduleIndex)
             scheduleBinding.tvScheduleName.text = scheduleName
             ViewCompat.setAccessibilityHeading(scheduleBinding.tvScheduleName, true)
+            scheduleBinding.etScheduleName.setText(schedule.customName)
+            scheduleBinding.etScheduleName.contentDescription =
+                "${scheduleName}的自定义名称，留空使用第${scheduleIndex + 1}次服药"
+            scheduleBinding.etScheduleName.doAfterTextChanged { editable ->
+                updateSchedule(schedule.scheduleKey) { current ->
+                    current.copy(customName = editable?.toString().orEmpty())
+                }
+            }
             scheduleBinding.btnRemoveSchedule.contentDescription = "删除$scheduleName"
             scheduleBinding.btnRemoveSchedule.setOnClickListener {
                 if (schedules.size <= 1) {

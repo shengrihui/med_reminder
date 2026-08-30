@@ -19,8 +19,8 @@ class AlarmReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "AlarmReceiver"
-        private const val CHANNEL_ID = "med_reminder_channel_v3"
-        private const val OLD_CHANNEL_ID = "med_reminder_channel_v2"
+        private const val CHANNEL_ID = "med_reminder_channel_v4"
+        private val OLD_CHANNEL_IDS = listOf("med_reminder_channel_v2", "med_reminder_channel_v3")
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -77,8 +77,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun clearOccurrence(context: Context, drugId: Int, scheduleKey: Int, dateStr: String) {
         ReminderManager.cancelOccurrenceAlarms(context, drugId, scheduleKey, dateStr)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(ReminderManager.notificationId(drugId, scheduleKey, dateStr))
+        ReminderManager.cancelOccurrenceNotifications(context, drugId, scheduleKey, dateStr)
     }
 
     private fun showNotification(
@@ -91,7 +90,9 @@ class AlarmReceiver : BroadcastReceiver() {
         isCatchUp: Boolean
     ) {
         createNotificationChannel(context)
-        val notificationId = ReminderManager.notificationId(drug.id, schedule.scheduleKey, dateStr)
+        val notificationId = ReminderManager.notificationId(
+            drug.id, schedule.scheduleKey, dateStr, sourceTime
+        )
         val label = schedule.displayName(scheduleIndex)
         val times = schedule.reminderTimes.sortedBy { it.hour * 60 + it.minute }
             .joinToString("、") { it.format() }
@@ -108,27 +109,40 @@ class AlarmReceiver : BroadcastReceiver() {
             context, NotificationActionReceiver.ACTION_TAKEN, notificationId * 10 + 1,
             drug.id, schedule.scheduleKey, dateStr, sourceTime
         )
-        val laterPending = actionPendingIntent(
-            context, NotificationActionReceiver.ACTION_LATER, notificationId * 10 + 2,
-            drug.id, schedule.scheduleKey, dateStr, sourceTime
+        val laterPending = PendingIntent.getActivity(
+            context,
+            (notificationId * 10 + 2) and 0x7fffffff,
+            Intent(context, SnoozeActivity::class.java).apply {
+                action = SnoozeActivity.ACTION_CHOOSE_SNOOZE
+                data = Uri.parse(
+                    "medreminder://snooze/${drug.id}/${schedule.scheduleKey}/$dateStr/" +
+                        "${sourceTime.hour}/${sourceTime.minute}"
+                )
+                putExtra(ReminderManager.EXTRA_DRUG_ID, drug.id)
+                putExtra(ReminderManager.EXTRA_SCHEDULE_KEY, schedule.scheduleKey)
+                putExtra(ReminderManager.EXTRA_DATE, dateStr)
+                putExtra(ReminderManager.EXTRA_HOUR, sourceTime.hour)
+                putExtra(ReminderManager.EXTRA_MINUTE, sourceTime.minute)
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val prefix = if (isCatchUp) "关机期间错过提醒：" else ""
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_med)
-            .setContentTitle("用药提醒 · $label")
-            .setContentText("$prefix${drug.name}（提醒时间 $times），请确认是否已用药")
+            .setContentTitle("${drug.name} · $label")
+            .setContentText("${prefix}请确认是否已服用（计划提醒 $times）")
             .setStyle(NotificationCompat.BigTextStyle().bigText(
                 "$prefix${drug.name}的${label}尚未确认。提醒时间：$times。"
             ))
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(openPending)
             .setTimeoutAfter(millisUntilMidnight())
-            .addAction(R.drawable.ic_med, "已用药", takenPending)
+            .addAction(R.drawable.ic_med, "已服用", takenPending)
             .addAction(R.drawable.ic_med, "稍后提醒", laterPending)
             .build()
 
@@ -148,7 +162,10 @@ class AlarmReceiver : BroadcastReceiver() {
     ): PendingIntent {
         val intent = Intent(context, NotificationActionReceiver::class.java).apply {
             this.action = action
-            data = Uri.parse("medreminder://notification/${action.substringAfterLast('.')}/$drugId/$scheduleKey/$dateStr")
+            data = Uri.parse(
+                "medreminder://notification/${action.substringAfterLast('.')}/$drugId/" +
+                    "$scheduleKey/$dateStr/${time.hour}/${time.minute}"
+            )
             putExtra(ReminderManager.EXTRA_DRUG_ID, drugId)
             putExtra(ReminderManager.EXTRA_SCHEDULE_KEY, scheduleKey)
             putExtra(ReminderManager.EXTRA_DATE, dateStr)
@@ -176,10 +193,12 @@ class AlarmReceiver : BroadcastReceiver() {
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        try {
-            manager.deleteNotificationChannel(OLD_CHANNEL_ID)
-        } catch (_: Exception) {
-            // 删除旧渠道失败不影响新渠道创建。
+        OLD_CHANNEL_IDS.forEach { oldChannelId ->
+            try {
+                manager.deleteNotificationChannel(oldChannelId)
+            } catch (_: Exception) {
+                // 删除旧渠道失败不影响新渠道创建。
+            }
         }
         val channel = NotificationChannel(
             CHANNEL_ID, "用药提醒", NotificationManager.IMPORTANCE_HIGH
@@ -196,7 +215,7 @@ class AlarmReceiver : BroadcastReceiver() {
             )
             val attributes = AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setUsage(AudioAttributes.USAGE_ALARM)
                 .build()
             setSound(soundUri, attributes)
         }

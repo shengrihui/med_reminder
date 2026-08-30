@@ -1,6 +1,7 @@
 package com.example.medreminder
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -67,13 +68,15 @@ object ReminderManager {
         drug: Drug,
         schedule: DoseSchedule,
         dateStr: String,
-        sourceTime: ReminderTime
-    ) {
-        if (drug.repeatMinutes <= 0 || dateStr != DrugStore.todayString()) return
-        val triggerAt = System.currentTimeMillis() + drug.repeatMinutes * 60_000L
-        if (triggerAt >= nextMidnightMillis()) return
+        sourceTime: ReminderTime,
+        delayMinutes: Int = drug.repeatMinutes
+    ): Boolean {
+        if (delayMinutes <= 0 || dateStr != DrugStore.todayString()) return false
+        val triggerAt = System.currentTimeMillis() + delayMinutes * 60_000L
+        if (triggerAt >= nextMidnightMillis()) return false
         val intent = alarmIntent(context, ACTION_REPEAT, drug.id, schedule.scheduleKey, dateStr, sourceTime)
         setExactAlarm(context, intent, triggerAt)
+        return true
     }
 
     /** 在午夜结束仍未确认的任务，并清除遗留通知。 */
@@ -90,8 +93,33 @@ object ReminderManager {
     }
 
     fun cancelOccurrenceAlarms(context: Context, drugId: Int, scheduleKey: Int, dateStr: String) {
+        getCurrentOrEmpty(context, drugId).find { it.scheduleKey == scheduleKey }
+            ?.reminderTimes?.forEach { sourceTime ->
+                cancelRepeatAlarm(context, drugId, scheduleKey, dateStr, sourceTime)
+            }
+        // 清理 v0.6.0 中没有区分提醒时间的重复闹钟。
         cancelPending(context, ACTION_REPEAT, occurrenceUri(ACTION_REPEAT, drugId, scheduleKey, dateStr))
         cancelPending(context, ACTION_EXPIRE, occurrenceUri(ACTION_EXPIRE, drugId, scheduleKey, dateStr))
+    }
+
+    fun cancelRepeatAlarm(
+        context: Context,
+        drugId: Int,
+        scheduleKey: Int,
+        dateStr: String,
+        sourceTime: ReminderTime
+    ) {
+        cancelPending(context, ACTION_REPEAT, repeatUri(drugId, scheduleKey, dateStr, sourceTime))
+    }
+
+    fun cancelOccurrenceNotifications(context: Context, drugId: Int, scheduleKey: Int, dateStr: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        getCurrentOrEmpty(context, drugId).find { it.scheduleKey == scheduleKey }
+            ?.reminderTimes?.forEach { sourceTime ->
+                manager.cancel(notificationId(drugId, scheduleKey, dateStr, sourceTime))
+            }
+        // 清理 v0.6.0 的“每次服药一条通知”。
+        manager.cancel(positiveHash("notification|$drugId|$scheduleKey|$dateStr"))
     }
 
     fun cancelAllAlarms(context: Context, drugId: Int) {
@@ -101,8 +129,11 @@ object ReminderManager {
             }
             val today = DrugStore.todayString()
             cancelOccurrenceAlarms(context, drugId, schedule.scheduleKey, today)
+            cancelOccurrenceNotifications(context, drugId, schedule.scheduleKey, today)
             val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -1) }
-            cancelOccurrenceAlarms(context, drugId, schedule.scheduleKey, DrugStore.dateString(yesterday))
+            val yesterdayDate = DrugStore.dateString(yesterday)
+            cancelOccurrenceAlarms(context, drugId, schedule.scheduleKey, yesterdayDate)
+            cancelOccurrenceNotifications(context, drugId, schedule.scheduleKey, yesterdayDate)
         }
         cancelLegacyAlarms(context, drugId)
     }
@@ -136,8 +167,14 @@ object ReminderManager {
         return count
     }
 
-    fun notificationId(drugId: Int, scheduleKey: Int, dateStr: String): Int =
-        positiveHash("notification|$drugId|$scheduleKey|$dateStr")
+    fun notificationId(
+        drugId: Int,
+        scheduleKey: Int,
+        dateStr: String,
+        sourceTime: ReminderTime
+    ): Int = positiveHash(
+        "notification|$drugId|$scheduleKey|$dateStr|${sourceTime.hour}|${sourceTime.minute}"
+    )
 
     private fun getCurrentOrEmpty(context: Context, drugId: Int): List<DoseSchedule> =
         DrugStore.getDrug(context, drugId)?.schedules ?: emptyList()
@@ -153,6 +190,7 @@ object ReminderManager {
         this.action = action
         data = when (action) {
             ACTION_SCHEDULED -> scheduledUri(drugId, scheduleKey, time)
+            ACTION_REPEAT -> repeatUri(drugId, scheduleKey, dateStr, time)
             else -> occurrenceUri(action, drugId, scheduleKey, dateStr)
         }
         putExtra(EXTRA_DRUG_ID, drugId)
@@ -169,6 +207,15 @@ object ReminderManager {
         val kind = action.substringAfterLast('.').lowercase(Locale.ROOT)
         return Uri.parse("medreminder://alarm/$kind/$drugId/$scheduleKey/$dateStr")
     }
+
+    private fun repeatUri(
+        drugId: Int,
+        scheduleKey: Int,
+        dateStr: String,
+        sourceTime: ReminderTime
+    ): Uri = Uri.parse(
+        "medreminder://alarm/repeat/$drugId/$scheduleKey/$dateStr/${sourceTime.hour}/${sourceTime.minute}"
+    )
 
     private fun setAlarmClock(context: Context, intent: Intent, triggerAtMillis: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager

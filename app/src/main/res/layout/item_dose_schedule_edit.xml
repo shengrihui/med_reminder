@@ -36,6 +36,21 @@
             android:textColor="@color/status_not_taken" />
     </LinearLayout>
 
+    <EditText
+        android:id="@+id/etScheduleName"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="4dp"
+        android:background="@android:color/transparent"
+        android:hint="可选名称，例如早餐后"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:maxLength="12"
+        android:paddingHorizontal="4dp"
+        android:textColor="@color/text_primary"
+        android:textColorHint="@color/text_hint"
+        android:textSize="16sp" />
+
     <LinearLayout
         android:id="@+id/llReminderTimes"
         android:layout_width="match_parent"
